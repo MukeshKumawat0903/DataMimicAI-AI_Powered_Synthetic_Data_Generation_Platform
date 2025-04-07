@@ -1,1 +1,0 @@
-# Tabular_Synthetic_Data_Generation
