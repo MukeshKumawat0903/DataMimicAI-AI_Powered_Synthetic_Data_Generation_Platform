@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend  # Path to backend directory
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./uploads:/app/uploads  # Maps project root uploads/ to container
+      - ./backend/src:/app/src  # Maps backend src code
+    environment:
+      - ENV=development
+      - UPLOAD_DIR=/app/uploads  # Add this
+
+  frontend:
+    build:
+      context: ./frontend  # Path to frontend directory
+      dockerfile: Dockerfile
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./frontend:/app  # Maps frontend code
+    environment:
+      - API_URL=http://backend:8000
+    depends_on:
+      - backend

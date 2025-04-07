@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: synthetic-backend
+    env: docker
+    plan: free
+    dockerfile: backend/Dockerfile
+    disk:
+      name: uploads
+      mountPath: /tmp/uploads
+      sizeGB: 1
+
+  - type: web
+    name: synthetic-frontend
+    env: docker
+    plan: free
+    dockerfile: frontend/Dockerfile
