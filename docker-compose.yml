@@ -5,19 +5,23 @@ services:
     build:
       context: ./backend  # Path to backend directory
       dockerfile: Dockerfile
+    image: datamimicai-backend:latest
     ports:
       - "8000:8000"
     volumes:
-      - ./uploads:/app/uploads  # Maps project root uploads/ to container
-      - ./backend/src:/app/src  # Maps backend src code
+      # - ./uploads:/app/uploads  # Maps project root uploads/ to container
+      # - ./backend/src:/app/src  # Maps backend src code
+      - ./backend:/backend
     environment:
       - ENV=development
-      - UPLOAD_DIR=/app/uploads  # Add this
+      - DATABASE_URL=postgresql://synthadmin:password123@dpg-cn5s6vscn0vc739somqg-a/synthdata
+      - UPLOAD_DIR=/src/uploads
 
   frontend:
     build:
       context: ./frontend  # Path to frontend directory
       dockerfile: Dockerfile
+    image: datamimicai-frontend:latest
     ports:
       - "8501:8501"
     volumes:
