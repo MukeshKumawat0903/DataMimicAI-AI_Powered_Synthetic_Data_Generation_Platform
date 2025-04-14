@@ -4,7 +4,6 @@ services:
     name: datamimicai-backend
     plan: free
     runtime: python
-    pythonVersion: "3.9"
     buildCommand: |
       pip install -r backend/requirements.txt
     startCommand: |
@@ -27,7 +26,6 @@ services:
     name: datamimicai-frontend
     plan: free
     runtime: python
-    pythonVersion: "3.9"
     buildCommand: |
       pip install -r frontend/requirements.txt
     startCommand: |
