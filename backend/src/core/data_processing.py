@@ -1,8 +1,11 @@
 from sdv.datasets.local import load_csvs
 from sdv.datasets.demo import download_demo
 from sdv.metadata import SingleTableMetadata, MultiTableMetadata
+from pathlib import Path
 import pandas as pd
 import logging
+import os
+
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +26,35 @@ def load_data(file_path: str, demo_fallback: bool = True):
             logger.info("Using demo data fallback")
             return download_demo(modality='single_table', dataset_name='fake_hotels')
         raise
+
+def process_demo_data(data, metadata, file_id, algorithm):
+    """Process and store demo dataset"""
+    try:
+        # Create uploads directory if not exists
+        upload_dir = Path(os.getenv("UPLOAD_DIR", "uploads"))
+        upload_dir.mkdir(exist_ok=True)
+        
+        # Save dataset
+        file_path = upload_dir / f"{file_id}.csv"
+        
+        if algorithm == "PARS":
+            # Handle sequential data
+            data.to_csv(file_path, index=False)
+            columns = list(data.columns)
+            dataset_type = "sequential"
+        else:
+            # Handle single table data
+            data.to_csv(file_path, index=False)
+            columns = list(data.columns)
+            dataset_type = "single_table"
+
+        return {
+            "columns": columns,
+            "type": dataset_type,
+            "path": str(file_path)
+        }
+    except Exception as e:
+        raise RuntimeError(f"Data processing failed: {str(e)}")
 
 def detect_metadata(data: dict):
     """Detect metadata type based on data structure"""

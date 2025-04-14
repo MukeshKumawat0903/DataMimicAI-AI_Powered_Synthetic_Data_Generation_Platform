@@ -1,6 +1,7 @@
 FROM python:3.9-slim
 
-WORKDIR /app
+# WORKDIR /app
+WORKDIR /backend
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -9,10 +10,13 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-COPY backend/requirements.txt .
+COPY /requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application
-COPY backend/src/ ./src
+# Copy entire backend folder contents (including api.py, database.py, models.py, src/)
+# COPY . .
+COPY . /backend
+
 
 CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

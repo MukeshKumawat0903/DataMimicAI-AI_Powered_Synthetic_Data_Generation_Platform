@@ -1,16 +1,43 @@
+# render.yaml
 services:
   - type: web
-    name: synthetic-backend
-    env: docker
+    name: datamimicai-backend
     plan: free
-    dockerfile: backend/Dockerfile
+    runtime: python
+    pythonVersion: "3.9.13"
+    buildCommand: |
+      pip install -r backend/requirements.txt
+    startCommand: |
+      uvicorn src.api.main:app --host 0.0.0.0 --port 8000
     disk:
       name: uploads
-      mountPath: /tmp/uploads
+      mountPath: /data
       sizeGB: 1
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: datamimicai-db
+          property: connectionString
+      - key: UPLOAD_DIR
+        value: /data
+      - key: PYTHONPATH
+        value: /opt/render/project/src
 
   - type: web
-    name: synthetic-frontend
-    env: docker
+    name: datamimicai-frontend
     plan: free
-    dockerfile: frontend/Dockerfile
+    runtime: python
+    pythonVersion: "3.9.13"
+    buildCommand: |
+      pip install -r frontend/requirements.txt
+    startCommand: |
+      streamlit run app.py --server.port=$PORT --server.address=0.0.0.0
+    envVars:
+      - key: API_URL
+        value: https://datamimicai-backend.onrender.com
+
+databases:
+  - name: datamimicai-db
+    plan: free
+    databaseName: synthetic_data_1ag5
+    user: synthadmin

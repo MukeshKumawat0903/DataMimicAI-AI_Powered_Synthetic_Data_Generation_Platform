@@ -42,19 +42,65 @@ def main():
         show_visualization()
 
 def handle_demo_mode():
-    """Handle demo data workflow"""
+    """Demo mode with algorithm-specific datasets"""
+    st.subheader("Demo Mode Settings")
+    
+    # Add algorithm selection
+    algorithm = st.selectbox(
+        "Select Algorithm for Demo",
+        ["CTGAN", "GaussianCopula", "TVAE", "PARS"],
+        index=0
+    )    
+
     if st.button("Load Demo Data"):
         try:
-            response = requests.post(f"{API_BASE}/load-demo")
-            if response.status_code == 200:
-                st.session_state.file_id = response.json().get("file_id")
-                st.session_state.generated_file_id = None
-                st.session_state.data_columns = []
-                st.success("Demo data loaded successfully!")
-            else:
-                st.error("Failed to load demo data")
+            with st.spinner(f"Loading {algorithm} demo..."):
+                response = requests.post(
+                    f"{API_BASE}/load-demo",
+                    params={"algorithm": algorithm},  # Send as query parameter
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    # Store original columns immediately
+                    st.session_state.original_columns = data['columns']
+                    
+                    # Store other metadata
+                    st.session_state.file_id = data["file_id"]
+                    st.session_state.generated_file_id = None
+                    st.session_state.data_columns = data["columns"]
+
+                    # Show preview with actual data
+                    with st.expander("Demo Data Preview"):
+                        st.write(f"**Dataset:** {data['algorithm']} Example")
+                        st.write(f"**Rows:** {data['num_rows']:,}")
+                        st.write(f"**Columns ({len(data['columns'])}):**")
+                        
+                        # Create DataFrame from sample data dict
+                        df = pd.DataFrame(data['sample_data'])
+                        
+                        # Display interactive table
+                        st.dataframe(
+                            df,
+                            column_config={
+                                col: st.column_config.Column(
+                                    col,
+                                    help=f"Demo column from {data['algorithm']} dataset"
+                                ) for col in data['columns']
+                            },
+                            use_container_width=True
+                        )
+                    
+                    st.success("Demo data loaded successfully!")
+                else:
+                    st.error(f"Failed to load demo: {response.json().get('detail', 'Unknown error')}")
+                    
         except requests.exceptions.ConnectionError:
             st.error("Could not connect to API server")
+        except Exception as e:
+            st.error(f"Error loading demo: {str(e)}")
 
 def handle_file_upload():
     """Handle file upload workflow"""
@@ -75,7 +121,7 @@ def handle_file_upload():
                     st.session_state.file_id = response.json().get("file_id")
                     st.session_state.generated_file_id = None
                     st.session_state.data_columns = []
-
+            
                     # Store original columns immediately after upload
                     df = pd.read_csv(io.BytesIO(uploaded_file.getvalue()))
                     st.session_state.original_columns = df.columns.tolist()

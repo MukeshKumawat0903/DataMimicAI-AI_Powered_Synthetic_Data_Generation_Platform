@@ -1,28 +1,21 @@
-# Core dependencies
+# Core
 fastapi==0.109.0
 uvicorn==0.27.0
 python-multipart==0.0.7
 
 # Data processing
 pandas==2.1.4
-numpy==1.26.2
+numpy==1.26.4
 
 # Synthetic data
 sdv==1.17.4
-ctgan>=0.10.2
-rdt>=1.13.2
+faker==24.11.0
 
-# Utilities
-python-dotenv==1.0.0
-python-dateutil==2.8.2
-python-slugify==8.0.1
-
-# Database (future)
+# Database
 asyncpg==0.29.0
-sqlalchemy==2.0.25
+sqlalchemy[asyncio]==2.0.28
+psycopg2-binary==2.9.9  # PostgreSQL adapter
 
-
-# fastapi>=0.68.0
-# uvicorn>=0.15.0
-# pandas>=1.3.0
-# sdv>=0.13.1
+# Security
+pyjwt[crypto]==2.8.0
+passlib[bcrypt]==1.7.4
