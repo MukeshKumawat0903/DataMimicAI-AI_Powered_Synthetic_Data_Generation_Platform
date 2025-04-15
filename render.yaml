@@ -8,8 +8,9 @@ services:
       pip install --upgrade pip
       pip install -r backend/requirements.txt
     startCommand: |
+      cd backend && \
       uvicorn src.api.main:app --host 0.0.0.0 --port 8000
-    workingDirectory: backend
+    # workingDirectory: backend
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -28,8 +29,9 @@ services:
       pip install --upgrade pip
       pip install -r frontend/requirements.txt
     startCommand: |
+      cd frontend && \
       streamlit run app.py --server.port=$PORT --server.address=0.0.0.0
-    workingDirectory: frontend
+    # workingDirectory: frontend
     envVars:
       - key: API_URL
         value: https://datamimicai-backend.onrender.com
