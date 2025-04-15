@@ -4,14 +4,15 @@ from fastapi.responses import FileResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.data_processing import (
+from src.core.data_processing import (
     load_data,
     detect_metadata,
-    prepare_training_data as data_loader
+    prepare_training_data as data_loader,
+    process_demo_data
 )
-from core.visualization import generate_visualizations
-from core.synthesizers import create_synthesizer
-from typing import Optional, List  # Import Optional and List
+from src.core.visualization import generate_visualizations
+from src.core.synthesizers import create_synthesizer
+from typing import Optional, List
 import pandas as pd
 import numpy as np
 import json
@@ -20,10 +21,9 @@ import os
 import io
 import logging
 
-from core.database import get_async_db
-from core.models import UploadedDataset
+from src.core.database import get_async_db
+from src.core.models import UploadedDataset
 from sdv.datasets.demo import download_demo
-from core.data_processing import process_demo_data
 
 app = FastAPI()
 
