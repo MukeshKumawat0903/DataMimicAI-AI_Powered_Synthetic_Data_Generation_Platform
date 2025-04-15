@@ -5,6 +5,7 @@ services:
     plan: free
     runtime: python
     buildCommand: |
+      pip install --upgrade pip
       pip install -r backend/requirements.txt
     startCommand: |
       uvicorn src.api.main:app --host 0.0.0.0 --port 8000
@@ -17,13 +18,14 @@ services:
       - key: UPLOAD_DIR
         value: /data
       - key: PYTHONPATH
-        value: /opt/render/project/src
+        value: /opt/render/project/backend/
 
   - type: web
     name: datamimicai-frontend
     plan: free
     runtime: python
     buildCommand: |
+      pip install --upgrade pip
       pip install -r frontend/requirements.txt
     startCommand: |
       streamlit run app.py --server.port=$PORT --server.address=0.0.0.0
