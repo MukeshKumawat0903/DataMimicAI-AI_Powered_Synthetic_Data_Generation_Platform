@@ -16,7 +16,7 @@ services:
           name: datamimicai-db
           property: connectionString
       - key: UPLOAD_DIR
-        value: /data
+        value: /opt/render/project/uploads/
       - key: PYTHONPATH
         value: /opt/render/project/backend/
 
