@@ -22,6 +22,7 @@ import io
 import logging
 
 from src.core.database import get_async_db
+from src.core.database import Base, engine
 from src.core.models import UploadedDataset
 from sdv.datasets.demo import download_demo
 
@@ -34,8 +35,16 @@ def home():
 logger = logging.getLogger(__name__)
 
 # Temporary storage for demo (replace with DB in production)
-UPLOAD_DIR = "uploads"
+# UPLOAD_DIR = "uploads"
+# os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+@app.on_event("startup")
+async def on_startup():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
 # Global cache to store DataFrames (replace with a database in production)
 DATA_CACHE = {}
