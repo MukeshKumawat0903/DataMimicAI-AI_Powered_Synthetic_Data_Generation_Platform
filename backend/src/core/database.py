@@ -4,10 +4,16 @@ from dotenv import load_dotenv
 import os
 
 # Load environment variables
-dotenv_path = os.path.abspath('../../../.env')
-load_dotenv(dotenv_path)
+# Load .env for local development only
+if os.getenv("RENDER") is None:
+    dotenv_path = os.path.abspath('../../../.env')
+    load_dotenv(dotenv_path)
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+# Load DB URL from environment
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL is not set!")
 
 engine = create_async_engine(
     DATABASE_URL,
