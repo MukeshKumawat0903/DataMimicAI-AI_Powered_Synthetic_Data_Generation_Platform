@@ -19,3 +19,6 @@ psycopg2-binary==2.9.9  # PostgreSQL adapter
 # Security
 pyjwt[crypto]==2.8.0
 passlib[bcrypt]==1.7.4
+
+#Other
+python-dotenv==1.0.1
