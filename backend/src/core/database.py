@@ -10,7 +10,7 @@ if os.getenv("RENDER") is None:
     load_dotenv(dotenv_path)
 
 # Load DB URL from environment
-DATABASE_URL = os.environ.get("DATABASE_URL")
+DATABASE_URL = os.environ.get("DATABASE_URL").replace("postgresql://", "postgresql+asyncpg://")
 
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL is not set!")
@@ -21,7 +21,7 @@ engine = create_async_engine(
     max_overflow=10,
     pool_pre_ping=True,
     connect_args={"ssl": "require"} 
-    # connect_args={"ssl": "disable"} --> For Cloud
+    # connect_args={"ssl": "disable"} --> For Local
 )
 
 AsyncSessionLocal = sessionmaker(
