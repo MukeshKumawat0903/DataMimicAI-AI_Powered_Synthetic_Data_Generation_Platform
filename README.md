@@ -20,16 +20,16 @@ DataMimicAI is an intelligent, end-to-end platform designed to generate high-qua
 
 ## 🛠️ Tech Stack
 
-| Layer       | Tools / Tech |
-|-------------|--------------|
-| **Backend** | FastAPI, Uvicorn |
-| **Frontend** | Streamlit (optional React) |
-| **Data Synthesis** | SDV (CTGAN, TVAE, GaussianCopula), Pandas |
-| **Visualization** | Matplotlib, Seaborn |
-| **Database** | PostgreSQL (local), MongoDB (optional) |
+| Layer                    | Tools / Tech                                                               |
+| ------------------------ | -------------------------------------------------------------------------- |
+| **Backend**        | FastAPI, Uvicorn                                                           |
+| **Frontend**       | Streamlit (optional React)                                                 |
+| **Data Synthesis** | SDV (CTGAN, TVAE, GaussianCopula), Pandas                                  |
+| **Visualization**  | Matplotlib, Seaborn                                                        |
+| **Database**       | PostgreSQL (local), MongoDB (optional)                                     |
 | **Infrastructure** | Docker, Docker Compose, AWS EC2 (planned), Terraform, Kubernetes (planned) |
-| **CI/CD** | GitHub Actions |
-| **Testing** | Pytest |
+| **CI/CD**          | GitHub Actions                                                             |
+| **Testing**        | Pytest                                                                     |
 
 ---
 
@@ -59,23 +59,27 @@ Tabular_Synthetic_Data_Generation_App/
 ## ⚡ Quick Start (Local Dev)
 
 ### ✅ Prerequisites:
+
 - Python 3.9+
 - Docker + Docker Compose
 - Git
 
 ### 🚀 1. Clone the repo
+
 ```bash
 git clone https://github.com/yourusername/DataMimicAI.git
 cd DataMimicAI
 ```
 
 ### 🚀 2. Launch backend (FastAPI)
+
 ```bash
-cd backend/src
-uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+cd backend
+uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### 🚀 3. Launch frontend (Streamlit)
+
 ```bash
 cd frontend
 streamlit run app.py
@@ -85,12 +89,12 @@ streamlit run app.py
 
 ## 🧪 API Endpoints
 
-| Endpoint         | Method | Description |
-|------------------|--------|-------------|
-| `/`              | GET    | Welcome message |
-| `/upload`        | POST   | Upload a CSV dataset |
-| `/generate`      | POST   | Generate synthetic data |
-| `/visualize`     | POST   | Compare real vs synthetic data |
+| Endpoint       | Method | Description                    |
+| -------------- | ------ | ------------------------------ |
+| `/`          | GET    | Welcome message                |
+| `/upload`    | POST   | Upload a CSV dataset           |
+| `/generate`  | POST   | Generate synthetic data        |
+| `/visualize` | POST   | Compare real vs synthetic data |
 
 ---
 
@@ -134,4 +138,3 @@ docker-compose -f docker/docker-compose.yml up --build
 MIT License — feel free to use, modify, and contribute!
 
 ---
-
