@@ -1,30 +1,32 @@
-from fastapi import FastAPI, UploadFile, Depends, HTTPException, Query, APIRouter
-from fastapi.responses import HTMLResponse
-from fastapi.responses import FileResponse
+# Standard library
+import os
+import io
+import uuid
+import json
+import logging
+
+# Third-party libraries
+import pandas as pd
+import numpy as np
+from typing import Optional, List
+from fastapi import FastAPI, UploadFile, Depends, HTTPException, Query
+from fastapi.responses import HTMLResponse, FileResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sdv.datasets.demo import download_demo
 
+# Local application imports
+from src.core.database import get_async_db, Base
+from src.core.models import UploadedDataset
 from src.core.data_processing import (
     load_data,
     detect_metadata,
     prepare_training_data as data_loader,
-    process_demo_data
+    process_demo_data,
 )
 from src.core.visualization import generate_visualizations
 from src.core.synthesizers import create_synthesizer
-from typing import Optional, List
-import pandas as pd
-import numpy as np
-import json
-import uuid
-import os
-import io
-import logging
-
-from src.core.database import get_async_db
-from src.core.database import Base, engine
-from src.core.models import UploadedDataset
-from sdv.datasets.demo import download_demo
+from src.core.database import create_tables  
 
 app = FastAPI()
 
@@ -34,97 +36,97 @@ def home():
 
 logger = logging.getLogger(__name__)
 
-# Temporary storage for demo (replace with DB in production)
-# UPLOAD_DIR = "uploads"
-# os.makedirs(UPLOAD_DIR, exist_ok=True)
-
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-@app.on_event("startup")
-async def on_startup():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+## For render postgress database connection
+
+# @app.on_event("startup")
+# async def on_startup():
+#     await create_tables()
+#     logging.info("Database tables created (if not exist).")
+
+# @app.post("/upload")
+# async def upload_dataset(file: UploadFile, db: AsyncSession = Depends(get_async_db)):
+#     try:
+#         # Read file content (bytes)
+#         file_content = await file.read()
+#         print("file_content2.............", file_content)
+
+#         # Validate size (e.g., 10MB limit)
+#         max_size = 10 * 1024 * 1024
+#         if len(file_content) > max_size:
+#             raise HTTPException(status_code=413, detail="File exceeds 10MB limit")
+
+#         # Parse file content with Pandas
+#         try:
+#             df = pd.read_csv(io.BytesIO(file_content))
+#         except Exception as e:
+#             raise HTTPException(status_code=400, detail=f"CSV parse error: {str(e)}")
+
+#         # Extract metadata
+#         record_count = len(df)
+#         sample_data = df.head(5).to_dict(orient="records")
+#         sample_json = json.dumps(sample_data)
+
+#         # Create DB entry
+#         dataset = UploadedDataset(
+#             id=str(uuid.uuid4()),
+#             filename=file.filename,
+#             record_count=record_count,
+#             sample_data=sample_json,
+#             original_data=file_content
+#         )
+
+#         db.add(dataset)
+#         await db.commit()
+#         await db.refresh(dataset)
+
+#         return {"file_id": dataset.id, "preview_rows": sample_data}
+
+#     except SQLAlchemyError as e:
+#         await db.rollback()
+#         logger.error(f"Database error: {str(e)}")
+#         raise HTTPException(status_code=500, detail="Database error")
+
+#     except Exception as e:
+#         logger.error(f"Upload failed: {str(e)}")
+#         raise HTTPException(status_code=500, detail="Unexpected error")
+
+#     finally:
+#         await file.close()
+
 
 # Global cache to store DataFrames (replace with a database in production)
 DATA_CACHE = {}
 
 @app.post("/upload")
-async def upload_dataset(file: UploadFile, db: AsyncSession = Depends(get_async_db)):
+async def upload_dataset(file: UploadFile):
+    """Handle CSV file upload and cache it for processing"""
     try:
-        # Read file content (bytes)
-        file_content = await file.read()
+        file_id = str(uuid.uuid4())
+        content = await file.read()
 
-        # Validate size (e.g., 10MB limit)
-        max_size = 10 * 1024 * 1024
-        if len(file_content) > max_size:
-            raise HTTPException(status_code=413, detail="File exceeds 10MB limit")
+        df = pd.read_csv(io.BytesIO(content))
 
-        # Parse file content with Pandas
-        try:
-            df = pd.read_csv(io.BytesIO(file_content))
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"CSV parse error: {str(e)}")
+        DATA_CACHE[file_id] = df
 
-        # Extract metadata
-        record_count = len(df)
-        sample_data = df.head(5).to_dict(orient="records")
-        sample_json = json.dumps(sample_data)
+        # Optional save
+        file_path = os.path.join(UPLOAD_DIR, f"{file_id}.csv")
+        with open(file_path, "wb") as f:
+            f.write(content)
 
-        # Create DB entry
-        dataset = UploadedDataset(
-            id=str(uuid.uuid4()),
-            filename=file.filename,
-            record_count=record_count,
-            sample_data=sample_json,
-            original_data=file_content
-        )
+        logger.info(f"Uploaded file '{file.filename}' as '{file_id}'")
 
-        db.add(dataset)
-        await db.commit()
-        await db.refresh(dataset)
+        return {"file_id": file_id}
 
-        return {"file_id": dataset.id, "preview_rows": sample_data}
-
-    except SQLAlchemyError as e:
-        await db.rollback()
-        logger.error(f"Database error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Database error")
+    except pd.errors.ParserError as e:
+        logger.error(f"CSV parsing error: {e}")
+        raise HTTPException(status_code=400, detail="Invalid CSV format")
 
     except Exception as e:
-        logger.error(f"Upload failed: {str(e)}")
-        raise HTTPException(status_code=500, detail="Unexpected error")
-
-    finally:
-        await file.close()
-
-# @app.post("/upload")
-# async def upload_dataset(file: UploadFile):
-#     try:
-#         # Generate unique file ID
-#         file_id = str(uuid.uuid4())
-        
-#         # Read uploaded CSV into DataFrame
-#         content = await file.read()
-#         df = pd.read_csv(io.BytesIO(content))
-        
-#         # Store DataFrame in cache
-#         DATA_CACHE[file_id] = df
-#         # Optional: Save raw file to disk (if needed)
-#         file_path = os.path.join(UPLOAD_DIR, f"{file_id}.csv")
-#         with open(file_path, "wb") as buffer:
-#             buffer.write(content)
-        
-#         logger.info(f"Uploaded file {file.filename} as {file_id}")
-#         return {"file_id": file_id}
-    
-#     except pd.errors.ParserError as e:
-#         logger.error(f"Invalid CSV: {str(e)}")
-#         raise HTTPException(400, "Invalid CSV file")
-    
-#     except Exception as e:
-#         logger.error(f"Upload failed: {str(e)}")
-#         raise HTTPException(500, "File upload failed")
+        logger.error(f"Upload failed: {e}")
+        raise HTTPException(status_code=500, detail="File upload failed")
     
 def sanitize_json(data):
     """Convert numpy types and handle NaNs for JSON serialization"""
@@ -195,6 +197,7 @@ async def generate_data(
     """Generate synthetic data endpoint"""
     try:
         file_path = os.path.join(UPLOAD_DIR, f"{file_id}.csv")
+        print("file_path...............1", file_path)
         
         if not os.path.exists(file_path):
             raise HTTPException(404, "File not found")
