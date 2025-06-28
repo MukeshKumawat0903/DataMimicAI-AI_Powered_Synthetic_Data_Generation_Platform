@@ -21,7 +21,7 @@ engine = create_async_engine(
     max_overflow=10,
     pool_pre_ping=True,
     connect_args={"ssl": "require"} 
-    # connect_args={"ssl": "disable"} --> For Local
+    # connect_args={"ssl": "disable"} # --> For Local
 )
 
 AsyncSessionLocal = sessionmaker(
