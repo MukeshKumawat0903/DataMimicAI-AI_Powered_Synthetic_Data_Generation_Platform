@@ -85,6 +85,22 @@ cd frontend
 streamlit run app.py
 ```
 
+### 🚀 4. 🚀 One-Command Startuph
+ - From your project root directory, simply run (from Git Bash):
+
+```bash
+./start.sh
+```
+**This will:**
+
+ - Start the FastAPI backend server (on http://localhost:8000)
+
+ - Start the Streamlit frontend app (on http://localhost:8501)
+
+**Note for Windows users:**
+ - If you are on Windows, please use Git Bash or Windows Subsystem for Linux (WSL) to run .sh scripts.
+ - If you prefer using Windows Command Prompt or PowerShell, create and run a start.bat script instead.
+
 ---
 
 ## 🧪 API Endpoints

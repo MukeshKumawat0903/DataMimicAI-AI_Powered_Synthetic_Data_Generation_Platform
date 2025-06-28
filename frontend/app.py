@@ -3,14 +3,14 @@ import requests
 import os
 import pandas as pd
 import io
-from typing import Optional
 
-# Configure API URL
+import frontend_config as config
 API_BASE = os.getenv("API_URL", "http://localhost:8000")   # Will be set in Render
 
 def main():
-    st.title("Synthetic Data Platform")
-    
+    st.set_page_config(page_title="DataMimicAI Synthetic Data Platform", layout="wide")
+    st.title("🧠 Synthetic Data Platform")
+
     # Initialize session state
     if 'file_id' not in st.session_state:
         st.session_state.file_id = None
@@ -20,8 +20,8 @@ def main():
         st.session_state.data_columns = []
     if 'original_columns' not in st.session_state:
         st.session_state.original_columns = []
-    
-    # Sidebar for settings
+
+    # Sidebar configuration (useful for global settings)
     with st.sidebar:
         st.header("Configuration")
         demo_mode = st.checkbox("Use Demo Data")
@@ -30,16 +30,88 @@ def main():
             st.session_state.generated_file_id = None
             st.session_state.data_columns = []
             st.rerun()
+
+    # ------ MODERN TAB LAYOUT ------
+    tabs = st.tabs([
+        "📁 Data Upload", 
+        "⚙️ Generation", 
+        "📊 Visualization", 
+        "🧩 Roadmap & Coming Soon"
+    ])
+
+    # ---- DATA UPLOAD TAB ----
+    with tabs[0]:
+        st.subheader("📁 Upload or Select Data")
+        if demo_mode:
+            handle_demo_mode()
+        else:
+            handle_file_upload()
+        if st.session_state.file_id:
+            st.success("Dataset ready. Move to Generation tab.")
+
+    # ---- GENERATION TAB ----
+    with tabs[1]:
+        st.subheader("⚙️ Synthetic Data Generation")
+        if not st.session_state.file_id:
+            st.warning("Please upload/select data in the 'Data Upload' tab first.")
+        else:
+            show_generation_controls()
+
+    # ---- VISUALIZATION TAB ----
+    with tabs[2]:
+        st.subheader("📊 Data Visualization & Comparison")
+        if not st.session_state.generated_file_id:
+            st.info("Generate synthetic data first in the 'Generation' tab.")
+        else:
+            show_visualization()
+
+    # ---- ROADMAP/COMING SOON TAB ----
+    with tabs[3]:
+        show_feature_placeholders()
+
+# ---- Placeholders for Advanced Features (as in previous answer) ----
+def show_feature_placeholders():
+    st.header("🚀 Feature Roadmap & Coming Soon")
+    with st.expander("Enhanced Data Generation Capabilities (Coming Soon)", expanded=False):
+        st.markdown("""
+        - **Conditional Data Synthesis:** Generate for specific segments  
+        - **Multi-table Synthesis:** Related tables (CRM, finance, etc.)  
+        - **Time-Series Pattern Controls:** Seasonality, trends  
+        - **Data Quality Score:** Quantitative similarity metrics  
+        """)
+        st.info("Advanced generation features will let you customize and assess datasets.")
     
-    # Main content area
-    if demo_mode:
-        handle_demo_mode()
-    else:
-        handle_file_upload()
-    
-    if st.session_state.file_id:
-        show_generation_controls()
-        show_visualization()
+    with st.expander("Advanced Visualization & Reporting (Coming Soon)", expanded=False):
+        st.markdown("""
+        - **Interactive Data Explorer:** Drill into distributions  
+        - **Auto-Reports:** Downloadable PDF/HTML  
+        - **Lineage Visualization:** See full data journey  
+        """)
+        st.info("Dashboards and audit-ready reports are on the way.")
+
+    with st.expander("Advanced Analytics & Model Evaluation (Coming Soon)", expanded=False):
+        st.markdown("""
+        - **ML Task Evaluation:** Test ML models on synthetic vs real  
+        - **Drift & Feature Importance:** Automated reports  
+        - **Explainability:** Key difference analysis  
+        """)
+        st.info("Synthetic data validation and ML comparison soon available.")
+
+    with st.expander("Business Templates (Coming Soon)", expanded=False):
+        st.markdown("""
+        - **Industry Templates:** Domain schemas (finance, health, retail, energy, etc.)  
+        - **Scenario Simulators:** Business logic wizards  
+        - **Guided Playbooks:** Step-by-step business use cases  
+        """)
+        st.info("Domain templates and business simulation coming soon.")
+
+    with st.expander("Integration & Team Collaboration (Coming Soon)", expanded=False):
+        st.markdown("""
+        - **API/SDK:** Automate workflows  
+        - **Multi-user Permissions:** RBAC and auditing  
+        - **Cloud Export:** Parquet, SQL, BI connectors  
+        """)
+        st.info("APIs, multi-user, and cloud export features are planned.")
 
 def handle_demo_mode():
     """Demo mode with algorithm-specific datasets"""
@@ -138,63 +210,80 @@ def handle_file_upload():
 def show_generation_controls():
     """Show generation parameters and controls"""
     st.header("Generation Settings")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        algorithm = st.selectbox(
-            "Synthesis Algorithm",
-            # ["CTGAN", "GaussianCopula", "TVAE", "HMAS", "PARS"],
-            ["CTGAN", "GaussianCopula", "TVAE", "PARS"],
-            index=1
-        )
-    
-    # In show_generation_controls()
-    with col2:
-        if algorithm == "PARS":
-            # Check for valid sequence key columns
-            sequence_key_candidates = ['Symbol']
-            valid_sequence_columns = [
-                col for col in st.session_state.original_columns 
-                if col in sequence_key_candidates
-            ]
 
-            if not valid_sequence_columns:
-                st.error(
-                    "PAR requires one of these columns as sequence key: " +
-                    ", ".join(sequence_key_candidates)
-                )
-                return  # Exit early to prevent parameter display
+    # --- Single Algorithm Selector with Helpful Tips ---
+    st.markdown(
+        "**Tip:** Select the synthesis algorithm that matches your data. "
+        "See recommendations below."
+    )
 
-            num_sequences = st.number_input(
-                "Number of Sequences",
-                min_value=1,
-                value=1,
-                step=1
-            )
-            sequence_length = st.number_input(
-                "Sequence Length",
-                min_value=100,
-                value=5000,
-                step=100
-            )
-        else:
-            num_rows = st.number_input(
-                "Number of Rows to Generate",
-                min_value=100,
-                value=1000,
-                step=500,
-                format="%d"
-            )
+    algorithm = st.selectbox(
+        "Synthesis Algorithm",
+        list(config.ALGORITHM_INFO.keys()),
+        index=1,
+        format_func=lambda x: f"{x} - {config.ALGORITHM_INFO[x]['use']}"
+    )
+    st.divider()
 
+    st.info(f"**{algorithm}:** {config.ALGORITHM_INFO[algorithm]['desc']}  \n*{config.ALGORITHM_INFO[algorithm]['use']}*")
+
+    st.divider()
+
+    with st.expander("🔍 Compare All Algorithms", expanded=False):
+        st.table(pd.DataFrame(config.ALGORITHM_INFO).T)
+
+    st.divider()
+    
+    # --- Show Parameter Inputs Based on Algorithm Selection ---
+    
+    # col1, col2 = st.columns(2)
+    
+    # # with col1:
+    # #     algorithm = st.selectbox(
+    # #         "Synthesis Algorithm",
+    # #         # ["CTGAN", "GaussianCopula", "TVAE", "HMAS", "PARS"],
+    # #         ["CTGAN", "GaussianCopula", "TVAE", "PARS"],
+    # #         index=1
+    # #     )
+    
+    # # In show_generation_controls()
     # with col2:
-    #     num_rows = st.number_input(
-    #         "Number of Rows to Generate",
-    #         min_value=100,
-    #         value=1000,
-    #         step=500,
-    #         format="%d"
-    #     )  
+
+    if algorithm == "PARS":
+        # Check for valid sequence key columns
+        sequence_key_candidates = ['Symbol']
+        valid_sequence_columns = [
+            col for col in st.session_state.original_columns 
+            if col in sequence_key_candidates
+        ]
+
+        if not valid_sequence_columns:
+            st.error(
+                "PAR requires one of these columns as sequence key: " +
+                ", ".join(sequence_key_candidates)
+            )
+            return  # Exit early to prevent parameter display
+
+        num_sequences = st.number_input(
+            "Number of Sequences",
+            min_value=1,
+            value=1,
+            step=1
+        )
+        sequence_length = st.number_input(
+            "Sequence Length",
+            min_value=100,
+            value=5000,
+            step=100
+        )
+    else:
+        num_rows = st.number_input(
+            "Number of Rows to Generate",
+            min_value=100,
+            value=1000,
+            step=500,
+            format="%d"
+        )
 
     if st.button("Generate Synthetic Data", key="generate_btn"):
         # with st.spinner(f"Generating {num_rows} rows with {algorithm}..."):
@@ -231,6 +320,8 @@ def show_generation_controls():
                     st.session_state.data_columns = synthetic_df.columns.tolist()
                     
                     st.success("Generation completed!")
+                    
+                    st.divider()
                     st.download_button(
                         "Download Synthetic Data",
                         data=response.content,
