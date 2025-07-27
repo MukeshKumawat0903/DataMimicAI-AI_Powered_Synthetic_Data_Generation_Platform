@@ -7,6 +7,7 @@ python-multipart==0.0.7
 pandas==2.1.4
 numpy==1.26.4
 
+
 # Synthetic data
 sdv==1.17.4
 faker==24.11.0
@@ -21,3 +22,21 @@ passlib[bcrypt]==1.7.4
 
 #Other
 python-dotenv==1.0.1
+scipy==1.15.1
+fpdf==1.7.2
+matplotlib==3.10.1
+seaborn==0.13.2
+psutil==7.0.0
+
+pio==0.0.3
+
+# Synthcity and DGL
+torch==2.2.0 
+torchvision==0.17.0 
+torchaudio==2.2.0
+torchtext==0.18.0
+opacus==1.4.0
+synthcity==0.2.12
+dgl==2.2.1
+
+synthcity[all]

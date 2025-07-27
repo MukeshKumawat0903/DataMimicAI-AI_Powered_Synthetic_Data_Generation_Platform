@@ -1,17 +1,64 @@
 import streamlit as st
-import requests
-import os
 import pandas as pd
-import io
+import os
+import base64
+from pathlib import Path
 
-import frontend_config as config
-API_BASE = os.getenv("API_URL", "http://localhost:8000")   # Will be set in Render
+# UI Patterns
+from helpers.ui_patterns import (
+    sidebar_stepper,
+    sticky_action_bar,
+    preview_modal,
+    undo_last_change,
+    highlight_changes,
+    onboarding_tour,
+    sticky_section_header,
+    smart_preview_section
+)
+
+from helpers.file_upload import handle_demo_mode, handle_file_upload
+from helpers.generation import show_generation_controls
+from helpers.visualization import show_visualization
+# from helpers.roadmap import show_feature_placeholders
+from helpers.eda_feature_eng.expander_data_profiling import expander_data_profiling
+from helpers.eda_feature_eng.expander_correlation import expander_correlation
+from helpers.eda_feature_eng.expander_feature_suggestions import expander_feature_suggestions
+from helpers.eda_feature_eng.expander_outlier_and_drift import expander_outlier_and_drift
+from helpers.eda_feature_eng.expander_eda_feedback_loop import expander_eda_feedback_loop
+from helpers.advanced_generation import show_advanced_generation_controls
+
+API_BASE = os.getenv("API_URL", "http://localhost:8000")
+
+def set_step(n):
+    st.session_state.current_step = n
+    st.rerun()
+
+def show_eda_and_feature_engineering():
+    # Add sticky tabs using st.tabs (with sticky CSS set below)
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📄 Data Profiling", 
+        "🔗 Correlation", 
+        "💡 Feature Suggestions", 
+        "⚠️ Outlier & Drift", 
+        "🔁 Feedback Loop"
+    ])
+    with tab1:
+        expander_data_profiling()
+    with tab2:
+        expander_correlation()
+    with tab3:
+        expander_feature_suggestions()
+    with tab4:
+        expander_outlier_and_drift()
+    with tab5:
+        expander_eda_feedback_loop()
 
 def main():
     st.set_page_config(page_title="DataMimicAI Synthetic Data Platform", layout="wide")
-    st.title("🧠 Synthetic Data Platform")
 
-    # Initialize session state
+    # --- Session state initialization ---
+    if 'current_step' not in st.session_state:
+        st.session_state.current_step = 0
     if 'file_id' not in st.session_state:
         st.session_state.file_id = None
     if 'generated_file_id' not in st.session_state:
@@ -20,386 +67,320 @@ def main():
         st.session_state.data_columns = []
     if 'original_columns' not in st.session_state:
         st.session_state.original_columns = []
+    if 'data_history' not in st.session_state:
+        st.session_state.data_history = []
+    if 'df' not in st.session_state:
+        st.session_state.df = None
 
-    # Sidebar configuration (useful for global settings)
+    st.markdown("""
+    <style>
+    .sticky-top {
+        position: sticky;
+        top: 0;
+        z-index: 999;
+        background: #181a20;
+        padding: 0.3rem 0 0.2rem;
+        border-bottom: 1px solid #23242b;
+    }
+    .sticky-top-title {
+        font-size: 1.3rem;
+        font-weight: 700;
+        margin: 0;
+        line-height: 1.1;
+        display: flex;
+        align-items: center;
+        gap: 0.6em;
+    }
+    .sticky-top-caption {
+        font-size: 1.01rem;
+        margin: 0;
+        color: #a0a0a0;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+    # --- Sidebar ---
+    # 1️⃣  Either paste the data-URI directly …
+    EMOJI_PNG = Path(__file__).parent / "logo_DataMimicAI.png"
+
+    def png_to_data_uri(png_path: Path) -> str:
+        """Return a data:image/png;base64,… URI for the given file."""
+        with png_path.open("rb") as f:
+            b64 = base64.b64encode(f.read()).decode("utf-8")
+        return f"data:image/png;base64,{b64}"
+
+    # Build the data-URI, or fallback to a simple emoji if the file is missing
+    try:
+        DATA_URI = png_to_data_uri(EMOJI_PNG)
+        logo_html = f'<img src="{DATA_URI}" width="56" height="56" style="margin:0;" />'
+
+    except FileNotFoundError:
+        logo_html = "🧠"   # fallback icon
+
+    # Sidebar branding
     with st.sidebar:
+        st.markdown(
+            f"""
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:28px;">
+                {logo_html}
+                <span style="font-weight:900;font-size:1.35rem;letter-spacing:0.5px;">
+                    DataMimicAI
+                </span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.divider()
+        sidebar_stepper(st.session_state.current_step)
+        st.divider()
         st.header("Configuration")
         demo_mode = st.checkbox("Use Demo Data")
-        if st.button("Reset App"):
-            st.session_state.file_id = None
-            st.session_state.generated_file_id = None
-            st.session_state.data_columns = []
+        if st.button("Reset App", key="reset_app"):
+            for key in [
+                'file_id', 'generated_file_id', 'data_columns', 'original_columns',
+                'data_history', 'df'
+            ]:
+                st.session_state[key] = None if 'id' in key or key == 'df' else []
+            st.session_state.current_step = 0
             st.rerun()
 
-    # ------ MODERN TAB LAYOUT ------
-    tabs = st.tabs([
-        "📁 Data Upload", 
-        "⚙️ Generation", 
-        "📊 Visualization", 
-        "🧩 Roadmap & Coming Soon"
-    ])
+    step = st.session_state.current_step
+    step_names = [
+        "Synthetic Data Generation",
+        "EDA & Feature Eng.",
+        "Visualization",
+        # "Roadmap"
+    ]
+    n_steps = len(step_names) + 1  # +1 for Roadmap/final
 
-    # ---- DATA UPLOAD TAB ----
-    with tabs[0]:
-        st.subheader("📁 Upload or Select Data")
-        if demo_mode:
-            handle_demo_mode()
-        else:
-            handle_file_upload()
-        if st.session_state.file_id:
-            st.success("Dataset ready. Move to Generation tab.")
-
-    # ---- GENERATION TAB ----
-    with tabs[1]:
-        st.subheader("⚙️ Synthetic Data Generation")
-        if not st.session_state.file_id:
-            st.warning("Please upload/select data in the 'Data Upload' tab first.")
-        else:
-            show_generation_controls()
-
-    # ---- VISUALIZATION TAB ----
-    with tabs[2]:
-        st.subheader("📊 Data Visualization & Comparison")
-        if not st.session_state.generated_file_id:
-            st.info("Generate synthetic data first in the 'Generation' tab.")
-        else:
-            show_visualization()
-
-    # ---- ROADMAP/COMING SOON TAB ----
-    with tabs[3]:
-        show_feature_placeholders()
-
-# ---- Placeholders for Advanced Features (as in previous answer) ----
-def show_feature_placeholders():
-    st.header("🚀 Feature Roadmap & Coming Soon")
-    with st.expander("Enhanced Data Generation Capabilities (Coming Soon)", expanded=False):
-        st.markdown("""
-        - **Conditional Data Synthesis:** Generate for specific segments  
-        - **Multi-table Synthesis:** Related tables (CRM, finance, etc.)  
-        - **Time-Series Pattern Controls:** Seasonality, trends  
-        - **Data Quality Score:** Quantitative similarity metrics  
-        """)
-        st.info("Advanced generation features will let you customize and assess datasets.")
-    
-    with st.expander("Advanced Visualization & Reporting (Coming Soon)", expanded=False):
-        st.markdown("""
-        - **Interactive Data Explorer:** Drill into distributions  
-        - **Auto-Reports:** Downloadable PDF/HTML  
-        - **Lineage Visualization:** See full data journey  
-        """)
-        st.info("Dashboards and audit-ready reports are on the way.")
-
-    with st.expander("Advanced Analytics & Model Evaluation (Coming Soon)", expanded=False):
-        st.markdown("""
-        - **ML Task Evaluation:** Test ML models on synthetic vs real  
-        - **Drift & Feature Importance:** Automated reports  
-        - **Explainability:** Key difference analysis  
-        """)
-        st.info("Synthetic data validation and ML comparison soon available.")
-
-    with st.expander("Business Templates (Coming Soon)", expanded=False):
-        st.markdown("""
-        - **Industry Templates:** Domain schemas (finance, health, retail, energy, etc.)  
-        - **Scenario Simulators:** Business logic wizards  
-        - **Guided Playbooks:** Step-by-step business use cases  
-        """)
-        st.info("Domain templates and business simulation coming soon.")
-
-    with st.expander("Integration & Team Collaboration (Coming Soon)", expanded=False):
-        st.markdown("""
-        - **API/SDK:** Automate workflows  
-        - **Multi-user Permissions:** RBAC and auditing  
-        - **Cloud Export:** Parquet, SQL, BI connectors  
-        """)
-        st.info("APIs, multi-user, and cloud export features are planned.")
-
-def handle_demo_mode():
-    """Demo mode with algorithm-specific datasets"""
-    st.subheader("Demo Mode Settings")
-    
-    # Add algorithm selection
-    algorithm = st.selectbox(
-        "Select Algorithm for Demo",
-        ["CTGAN", "GaussianCopula", "TVAE", "PARS"],
-        index=0
-    )    
-
-    if st.button("Load Demo Data"):
-        try:
-            with st.spinner(f"Loading {algorithm} demo..."):
-                response = requests.post(
-                    f"{API_BASE}/load-demo",
-                    params={"algorithm": algorithm},  # Send as query parameter
-                    timeout=10
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    
-                    # Store original columns immediately
-                    st.session_state.original_columns = data['columns']
-                    
-                    # Store other metadata
-                    st.session_state.file_id = data["file_id"]
-                    st.session_state.generated_file_id = None
-                    st.session_state.data_columns = data["columns"]
-
-                    # Show preview with actual data
-                    with st.expander("Demo Data Preview"):
-                        st.write(f"**Dataset:** {data['algorithm']} Example")
-                        st.write(f"**Rows:** {data['num_rows']:,}")
-                        st.write(f"**Columns ({len(data['columns'])}):**")
-                        
-                        # Create DataFrame from sample data dict
-                        df = pd.DataFrame(data['sample_data'])
-                        
-                        # Display interactive table
-                        st.dataframe(
-                            df,
-                            column_config={
-                                col: st.column_config.Column(
-                                    col,
-                                    help=f"Demo column from {data['algorithm']} dataset"
-                                ) for col in data['columns']
-                            },
-                            use_container_width=True
-                        )
-                    
-                    st.success("Demo data loaded successfully!")
-                else:
-                    st.error(f"Failed to load demo: {response.json().get('detail', 'Unknown error')}")
-                    
-        except requests.exceptions.ConnectionError:
-            st.error("Could not connect to API server")
-        except Exception as e:
-            st.error(f"Error loading demo: {str(e)}")
-
-def handle_file_upload():
-    """Handle file upload workflow"""
-    if st.session_state.file_id is None:
-        uploaded_file = st.file_uploader(
-            "Upload your dataset (CSV)", 
-            type=["csv"],
-            key="file_uploader"
+    # ---- Step 0: DATA UPLOAD ----
+    if step == 0:
+        sticky_section_header(
+            "Data Upload",
+            subtitle="Upload your dataset to get started.",
+            icon="📁"
         )
+        st.divider()
+
+        # Put Tour last so upload tab is always first after rerun
+        tab_titles = [
+            "📁 Data Upload",
+            "🧐 Smart Preview (Auto-analysis)",
+            "🚀 Take a Quick Tour!"
+            ]
         
-        if uploaded_file is not None:
-            try:
-                response = requests.post(
-                    f"{API_BASE}/upload",
-                    files={"file": uploaded_file.getvalue()}
+        upload_tab, preview_tab, tour_tab = st.tabs(tab_titles)
+
+        # --- 1. Data Upload Tab ---
+        with upload_tab:
+            if demo_mode:
+                handle_demo_mode()
+            else:
+                handle_file_upload()
+            st.caption("Accepted: CSV. Try demo mode for sample data.")
+            if st.session_state.get('uploaded_df') is not None:
+                st.success("File uploaded successfully! " \
+                "👉 Now click the **Smart Preview** tab above to analyze your data.")
+            else:
+                st.info("➡️ Switch to **Smart Preview** to analyze your data.")
+
+        # --- 2. Smart Preview Tab ---
+        with preview_tab:
+            file_id = st.session_state.get('file_id')
+            df = st.session_state.get('uploaded_df')
+            smart_preview_section(df, file_id)
+
+        # --- 3. Quick Tour Tab ---
+        with tour_tab:
+            onboarding_tour()
+            st.info("➡️ Switch to **Data Upload** to begin.")
+
+    # ---- Step 1: GENERATION ----
+    elif step == 1:
+        st.markdown('<div id="custom-main-scroll">', unsafe_allow_html=True)
+        sticky_section_header(
+            "Synthetic Data Generation",
+            subtitle="Generate high-quality synthetic datasets tailored to your needs.",
+            icon="⚙️"
+        )
+        st.divider()
+        if not st.session_state.file_id:
+            st.warning("Please upload or select a dataset in the 'Data Upload' step first.")
+        else:
+            # Show the generation controls in a tabbed layout
+            tabs = st.tabs([
+                "🚀 Standard Models",
+                "💎 Advanced / AutoML",
+                # "🕒 Time Series Generator",
+                # "🏭 Industry Simulators",
+                "✍️ LLM-Powered"
+            ])
+
+            # --- 🚀 Standard Models ---
+            with tabs[0]:
+                st.caption(
+                    "Use **SDV** for fast, reliable generation of tabular synthetic data. "
+                    "Recommended for most users and general-purpose datasets.\n\n"
+                    "**Models included:** CTGAN, TVAE, GaussianCopula"
                 )
-                if response.status_code == 200:
-                    st.session_state.file_id = response.json().get("file_id")
-                    st.session_state.generated_file_id = None
-                    st.session_state.data_columns = []
+                show_generation_controls()
             
-                    # Store original columns immediately after upload
-                    df = pd.read_csv(io.BytesIO(uploaded_file.getvalue()))
-                    st.session_state.original_columns = df.columns.tolist()
-
-                    st.success("File uploaded successfully!")
-                    st.rerun()
-                else:
-                    st.error(f"Upload failed: {response.json().get('detail', 'Unknown error')}")
-            except Exception as e:
-                st.error(f"Upload error: {str(e)}")
-    else:
-        st.info("Dataset uploaded. Proceed with generation.")
-
-def show_generation_controls():
-    """Show generation parameters and controls"""
-    st.header("Generation Settings")
-
-    # --- Single Algorithm Selector with Helpful Tips ---
-    st.markdown(
-        "**Tip:** Select the synthesis algorithm that matches your data. "
-        "See recommendations below."
-    )
-
-    algorithm = st.selectbox(
-        "Synthesis Algorithm",
-        list(config.ALGORITHM_INFO.keys()),
-        index=1,
-        format_func=lambda x: f"{x} - {config.ALGORITHM_INFO[x]['use']}"
-    )
-    st.divider()
-
-    st.info(f"**{algorithm}:** {config.ALGORITHM_INFO[algorithm]['desc']}  \n*{config.ALGORITHM_INFO[algorithm]['use']}*")
-
-    st.divider()
-
-    with st.expander("🔍 Compare All Algorithms", expanded=False):
-        st.table(pd.DataFrame(config.ALGORITHM_INFO).T)
-
-    st.divider()
-    
-    # --- Show Parameter Inputs Based on Algorithm Selection ---
-    
-    # col1, col2 = st.columns(2)
-    
-    # # with col1:
-    # #     algorithm = st.selectbox(
-    # #         "Synthesis Algorithm",
-    # #         # ["CTGAN", "GaussianCopula", "TVAE", "HMAS", "PARS"],
-    # #         ["CTGAN", "GaussianCopula", "TVAE", "PARS"],
-    # #         index=1
-    # #     )
-    
-    # # In show_generation_controls()
-    # with col2:
-
-    if algorithm == "PARS":
-        # Check for valid sequence key columns
-        sequence_key_candidates = ['Symbol']
-        valid_sequence_columns = [
-            col for col in st.session_state.original_columns 
-            if col in sequence_key_candidates
-        ]
-
-        if not valid_sequence_columns:
-            st.error(
-                "PAR requires one of these columns as sequence key: " +
-                ", ".join(sequence_key_candidates)
-            )
-            return  # Exit early to prevent parameter display
-
-        num_sequences = st.number_input(
-            "Number of Sequences",
-            min_value=1,
-            value=1,
-            step=1
-        )
-        sequence_length = st.number_input(
-            "Sequence Length",
-            min_value=100,
-            value=5000,
-            step=100
-        )
-    else:
-        num_rows = st.number_input(
-            "Number of Rows to Generate",
-            min_value=100,
-            value=1000,
-            step=500,
-            format="%d"
-        )
-
-    if st.button("Generate Synthetic Data", key="generate_btn"):
-        # with st.spinner(f"Generating {num_rows} rows with {algorithm}..."):
-        with st.spinner(get_generation_message(algorithm, locals())):
-            try:
-                # url = f"{API_BASE}/generate?file_id={st.session_state.file_id}&algorithm={algorithm}&num_rows={num_rows}"
-                # response = requests.post(url, json=[])
-
-                # In generation button click handler:
-                params = {
-                    "file_id": st.session_state.file_id,
-                    "algorithm": algorithm
-                }
-
-                if algorithm == "PARS":
-                    params.update({
-                        "num_sequences": num_sequences,
-                        "sequence_length": sequence_length
-                    })
-                else:
-                    params["num_rows"] = num_rows
-
-                response = requests.post(
-                    f"{API_BASE}/generate",
-                    params=params
+            # --- 💎 Advanced / AutoML ---
+            with tabs[1]:
+                st.caption(
+                    "⚡ Unlock advanced synthetic data generation for tabular datasets with **SynthCity** models. "
+                    "Benefit from high fidelity, privacy protection, and leading-edge AI. "
+                    "Choose between single-model tuning or effortless **AutoML** for best-model selection.\n\n"
+                    "**Available models:** TabDDPM, CTGAN, TVAE, PrivBayes, DP-GAN, PATE-GAN, ARF, and more."
                 )
 
-                if response.status_code == 200:
-                    # Store generated file ID and columns
-                    st.session_state.generated_file_id = st.session_state.file_id
-                    
-                    # Extract columns from generated data
-                    synthetic_df = pd.read_csv(io.StringIO(response.content.decode('utf-8')))
-                    st.session_state.data_columns = synthetic_df.columns.tolist()
-                    
-                    st.success("Generation completed!")
-                    
-                    st.divider()
-                    st.download_button(
-                        "Download Synthetic Data",
-                        data=response.content,
-                        file_name="synthetic_data.csv",
-                        mime="text/csv"
-                    )
-                else:
-                    st.error(f"Generation failed: {response.text}")
-            
-            except requests.exceptions.RequestException as e:
-                st.error(f"API Error: {str(e)}")
+                show_advanced_generation_controls()
 
-def get_generation_message(algorithm, local_vars):
-    """Generate appropriate progress message"""
-    if algorithm == "PARS":
-        return f"Generating {local_vars['num_sequences']} sequences of length {local_vars['sequence_length']}..."
-    return f"Generating {local_vars['num_rows']} rows with {algorithm}..."
-
-def show_visualization():
-    """Show data visualization controls"""
-    st.header("Data Visualization")
-    
-    if not st.session_state.generated_file_id:
-        st.warning("Generate synthetic data first to enable visualization")
-        return
-    
-    if not st.session_state.data_columns:
-        st.error("No columns available for visualization")
-        return
-    
-    # Column selection UI
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        selected_column = st.selectbox(
-            "Select column for distribution plot",
-            options=st.session_state.data_columns,
-            index=0
-        )
-    
-    with col2:
-        selected_pairs = st.multiselect(
-            "Select columns for pair plot (2-3 recommended)",
-            options=st.session_state.data_columns,
-            default=st.session_state.data_columns[:2] if len(st.session_state.data_columns) >= 2 else []
-        )
-    
-    if st.button("Generate Visualizations", key="visualize_btn"):
-        if not selected_pairs:
-            st.warning("Please select at least one pair of columns for the pair plot")
-            return
             
-        with st.spinner("Creating visualizations..."):
-            try:
-                # Convert list to comma-separated string for API
-                pair_str = ",".join(selected_pairs)
-                
-                response = requests.get(
-                    f"{API_BASE}/visualize",
-                    params={
-                        "file_id": st.session_state.generated_file_id,
-                        "column": selected_column,
-                        "pair_columns": pair_str
-                    }
+            # # --- 🕒 Time Series Generator ---
+            # with tabs[2]:
+            #     st.caption(
+            #         "Dedicated tools for generating sequential or temporal data. "
+            #         "Ideal for IoT, finance, healthcare, and any time-dependent datasets.\n\n"
+            #         "**Models included:** TimeGAN, FourierFlows, TimeVAE, AR, VAR"
+            #     )
+            #     # show_time_series_controls(models=["TimeGAN", "FourierFlows", "TimeVAE", "AR", "VAR"])
+            
+            # # --- 🏭 Industry Templates ---
+            # with tabs[3]:
+            #     st.caption(
+            #         "Domain-specific simulators for creating realistic, multi-table datasets.\n\n"
+            #         "**Available Domains:**\n"
+            #         "🏥 Healthcare (Synthea)\n"
+            #         "💰 Finance (FinSynth)\n"
+            #         "🛒 Retail (RetailSim)\n"
+            #         "🚗 Automotive (Telematics)\n"
+            #         "🏦 Banking (Credit scoring)\n"
+            #         "🎓 Education (Student records)\n"
+            #         "⚡ Energy (Smart meters)\n"
+            #         "📶 Telecom (CDRs, call logs)"
+            #     )
+            #     st.markdown("🚧 *Coming Soon: Industry Templates with domain-specific wizards and presets*")
+
+            
+            # --- ✍️ LLM-Powered ---
+            with tabs[2]:
+                st.caption(
+                    "Use Large Language Models (LLMs) like **TableGPT** and **OpenAI GPT-4o** to generate data "
+                    "from natural language prompts or schema definitions.\n\n"
+                    "Ideal for prototyping or generating novel datasets from text.\n"
+                    "🚧 *Experimental Feature: Validate results carefully.*"
                 )
-                
-                if response.status_code == 200:
-                    st.subheader("Data Distribution Comparison")
-                    st.components.v1.html(
-                        response.content, 
-                        height=800,
-                        scrolling=True
-                    )
-                else:
-                    st.error(f"Visualization failed: {response.text}")
-            
-            except requests.exceptions.RequestException as e:
-                st.error(f"Visualization error: {str(e)}")
+                st.markdown("🚧 *Coming Soon: AI-powered prompt-based data generation*")
+
+        sticky_action_bar(
+            apply_label=None,
+            on_apply=None,
+            show_preview=True,
+            on_preview=lambda: preview_modal(
+                "Preview of generated data.",
+                st.session_state.df.head() if st.session_state.df is not None else pd.DataFrame()
+            ),
+            show_undo=True,
+            on_undo=undo_last_change,
+            help_text="After generating, review your synthetic data here.",
+            key_prefix="generation"
+        )
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+
+    # ---- Step 2: EDA & FEATURE ENGINEERING ----
+    elif step == 2:
+        st.markdown('<div id="custom-main-scroll">', unsafe_allow_html=True)
+        sticky_section_header(
+            "EDA & Feature Engineering",
+            subtitle="AI-Powered Exploratory Data Analysis and Feature Engineering Tools",
+            icon="🧠"
+        )
+
+        st.divider()
+        if not st.session_state.file_id:
+            st.warning("Upload data first in the 'Data Upload' step.")
+        else:
+            show_eda_and_feature_engineering()
+            if st.session_state.df is not None:
+                st.dataframe(highlight_changes(st.session_state.df, changed_cols=None))
+        sticky_action_bar(
+            apply_label=None,
+            on_apply=None,
+            show_preview=True,
+            on_preview=lambda: preview_modal(
+                "Preview of EDA results.", 
+                st.session_state.df.head() if st.session_state.df is not None else pd.DataFrame()
+                ),
+            show_undo=True,
+            on_undo=undo_last_change,
+            help_text="Explore, transform, and analyze your data here.",
+            key_prefix="eda"
+        )
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ---- Step 3: VISUALIZATION ----
+    elif step == 3:
+        sticky_section_header(
+            "Visualization",
+            subtitle="Visualize your (or synthetic) data.",
+            icon="📊"
+        )
+        st.divider()
+        if not st.session_state.generated_file_id:
+            st.info("Generate synthetic data first in the 'Generation' step.")
+        else:
+            show_visualization()  # Calls the tabbed UI as above
+        sticky_action_bar(
+            apply_label=None,
+            on_apply=None,
+            show_preview=False,
+            show_undo=False,
+            help_text="Visualize trends, compare real vs. synthetic data, and more.",
+            key_prefix="visualization"
+        )
+
+    # # ---- Step 4: ROADMAP ----
+    # elif step == 4:
+    #     # st.header("🧩 Roadmap & Coming Soon")
+    #     sticky_section_header(
+    #         "Roadmap & Coming Soon",
+    #         subtitle="Explore upcoming features and provide feedback.",
+    #         icon="🧩"
+    #     )
+
+    #     st.divider()
+    #     show_feature_placeholders()
+    #     sticky_action_bar(
+    #         apply_label=None,
+    #         on_apply=None,
+    #         show_preview=False,
+    #         show_undo=False,
+    #         help_text="Want to start over? Use the button above.",
+    #         key_prefix="roadmap"
+    #     )
+
+
+    # ---- Sticky Previous (bottom left) ----
+    if st.session_state.current_step > 0:
+        st.markdown('<div id="nav-prev">', unsafe_allow_html=True)
+        if st.button("⬅️ Previous", key="nav_prev_btn"):
+            set_step(st.session_state.current_step - 1)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ---- Sticky Next (bottom right, with step name) ----
+    # Show Next if NOT on last step (Roadmap)
+    if st.session_state.current_step < n_steps - 1:
+        st.markdown('<div id="nav-next">', unsafe_allow_html=True)
+        next_label = f"Next: {step_names[st.session_state.current_step]} ➡️"
+        if st.button(next_label, key="nav_next_btn"):
+            set_step(st.session_state.current_step + 1)
+        st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
