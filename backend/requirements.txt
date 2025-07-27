@@ -31,7 +31,7 @@ psutil==7.0.0
 pio==0.0.3
 
 # Synthcity and DGL
-torch==2.3.0 
+torch==2.2.0 
 torchvision==0.17.2 
 # torchaudio==2.3.0
 torchtext==0.17.2
