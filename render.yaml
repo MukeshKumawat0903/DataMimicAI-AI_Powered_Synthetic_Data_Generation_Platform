@@ -11,6 +11,8 @@ services:
       cd backend && \
       uvicorn src.api.main:app --host 0.0.0.0 --port 8000
     envVars:
+      - key: PYTHON_VERSION # Add this line to specify Python version
+        value: 3.10.18      # Set your desired Python version here
       - key: DATABASE_URL
         fromDatabase:
           name: datamimicai-db
@@ -31,6 +33,8 @@ services:
       cd frontend && \
       streamlit run app.py --server.port=$PORT --server.address=0.0.0.0
     envVars:
+      - key: PYTHON_VERSION # Add this line to specify Python version
+        value: 3.10.18      # Set your desired Python version here
       - key: API_URL
         value: https://datamimicai-backend.onrender.com
 
