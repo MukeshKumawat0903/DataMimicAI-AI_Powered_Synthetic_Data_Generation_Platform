@@ -3,7 +3,10 @@ import os
 import io
 import uuid
 import json
+import time
 import logging
+import psutil
+from synthcity.plugins import Plugins
 
 # Third-party libraries
 import pandas as pd
@@ -17,18 +20,26 @@ from sdv.datasets.demo import download_demo
 
 # Local application imports
 from src.core.database import get_async_db, Base
-from src.core.models import UploadedDataset
 from src.core.data_processing import (
     load_data,
     detect_metadata,
     prepare_training_data as data_loader,
     process_demo_data,
 )
-from src.core.visualization import generate_visualizations
-from src.core.synthesizers import create_synthesizer
-from src.core.database import create_tables  
+from src.core.visualization import DataVisualizer
+from src.core.database import create_tables
+
+from src.api.eda_feature_api import router as eda_feature_router
+from src.core.synth.generator import SDVSyntheticGenerator
+from src.core.synth.synthcity_generator import SynthCitySyntheticGenerator
+from src.api.feedback_generate_api import router as feedback_router
+from src.core.synth.model_selection import synthcity_model_comparison, select_best_model, get_memory_usage_mb
+
+from src.core.synth.config import advanced_models, metric_cols
 
 app = FastAPI()
+app.include_router(eda_feature_router)
+app.include_router(feedback_router)
 
 @app.get("/")
 def home():
@@ -38,6 +49,17 @@ logger = logging.getLogger(__name__)
 
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+def check_system_resources():
+    """Check if system has enough resources for training"""
+    memory = psutil.virtual_memory()
+    cpu_percent = psutil.cpu_percent(interval=1)
+    
+    if memory.percent > 80:
+        raise HTTPException(503, f"System memory too high ({memory.percent}%). Please try again later.")
+    
+    if cpu_percent > 85:
+        raise HTTPException(503, f"System CPU too high ({cpu_percent}%). Please try again later.")
 
 ## For render postgress database connection
 
@@ -190,66 +212,115 @@ async def generate_data(
     file_id: str,
     algorithm: str = "CTGAN",
     num_rows: int = 1000,
-    num_sequences: Optional[int] = 3,  # New PAR parameter
-    sequence_length: Optional[int] = 100,  # New PAR parameter
-    context_columns: Optional[List[str]] = None
+    num_sequences: Optional[int] = 3,
+    sequence_length: Optional[int] = 100,
+    context_columns: Optional[List[str]] = None,
+    epochs: Optional[int] = 100,
+    target_column: str = "Survived"
 ):
-    """Generate synthetic data endpoint"""
+    """Generate synthetic data endpoint with fixed SynthCity parameter handling"""
     try:
         file_path = os.path.join(UPLOAD_DIR, f"{file_id}.csv")
-        print("file_path...............1", file_path)
-        
+        logger.info(f"file_path: {file_path}")
+
         if not os.path.exists(file_path):
             raise HTTPException(404, "File not found")
 
         # Load and prepare data
         logger.info(f"Loading data for file ID: {file_id}")
         data_dict = load_data(file_path)
-        # training_data = prepare_training_data(data_dict)
         data = data_loader(data_dict)
-        
-        # Process metadata
+
+        # Detect metadata (for SDV/PARS)
         logger.info("Detecting metadata")
         metadata = detect_metadata(data_dict)
 
-        # --- ADD VALIDATION HERE ---
+        # --- SYNTHCITY PARAMETER MAPPING ---
+        ITERATION_PARAMS = {
+            'ddpm': 'n_iter',
+            'ctgan': 'n_iter',
+            'tvae': 'n_iter', 
+            'dpgan': 'n_iter', 
+            'pategan': 'n_iter', 
+            'privbayes': None,  # No iteration parameter
+            'arf': None         # No iteration parameter
+        }
+
+        # --- Handle PARS Validation (still SDV logic) ---
         if algorithm == "PARS":
             if not metadata.sequence_key:
-                raise HTTPException(
-                    400, 
-                    "PAR requires sequence key. Columns like 'Symbol' or 'id' must exist."
-                )
+                raise HTTPException(400, "PAR requires sequence key. Columns like 'Symbol' or 'id' must exist.")
             seq_key_type = metadata.columns[metadata.sequence_key]['sdtype']
             if seq_key_type != 'id':
-                raise HTTPException(
-                    400,
-                    f"Sequence key column '{metadata.sequence_key}' must be type 'id' (current: {seq_key_type})"
-                )
-        # --- END VALIDATION ---       
+                raise HTTPException(400, f"Sequence key column '{metadata.sequence_key}' must be type 'id' (current: {seq_key_type})")
         
-        # Create synthesizer
-        logger.info(f"Creating {algorithm} synthesizer")
-        synthesizer = create_synthesizer(
-            real_data=data,
-            metadata=metadata,
-            sdv_algorithm=algorithm,
-            context_columns=context_columns or []
-        )
-        
-        # Generate synthetic data
-        logger.info(f"Generating {num_rows} synthetic rows")
+        # --- SynthCity Section (FIXED: Conservative Parameter Handling) ---
+        if algorithm in advanced_models.values():  # e.g., "ddpm", "ctgan", etc.
+            logger.info(f"Creating SynthCity generator for: {algorithm} with epochs={epochs}")
+            
+            # Build plugin_kwargs with correct parameter name (conservative approach)
+            synthcity_plugin_kwargs = {}
+            iteration_param_name = ITERATION_PARAMS.get(algorithm)
+            if iteration_param_name:
+                synthcity_plugin_kwargs[iteration_param_name] = epochs
+                logger.info(f"Applying '{iteration_param_name}={epochs}' for {algorithm} model.")
+            else:
+                logger.info(f"Using default parameters for {algorithm} (no epochs parameter supported)")
 
-        if algorithm == "PARS":
-            synthetic_data = synthesizer.sample(
-                num_sequences=num_sequences, 
-                sequence_length = sequence_length
-                )
+            generator = SynthCitySyntheticGenerator(
+                algorithm=algorithm,
+                target_column=target_column,
+                plugin_kwargs=synthcity_plugin_kwargs
+            )
+            synthetic_data = generator.generate(real_data=data, num_rows=num_rows)
+
+        # --- SDV/PARS Section (Existing) ---
+        elif algorithm == "PARS":
+            generator = SDVSyntheticGenerator(
+                algorithm=algorithm,
+                metadata=metadata,
+                context_columns=context_columns or {},
+                epochs=epochs  # Pass epochs to SDV generator too
+            )
+            synthetic_data = generator.generate(
+                real_data=data,
+                num_sequences=num_sequences,
+                sequence_length=sequence_length,
+            )
+
         else:
-            synthetic_data = synthesizer.sample(num_rows=num_rows)
-        
-        # Save results
-        output_path = os.path.join(UPLOAD_DIR, f"syn_{file_id}.csv")
-        synthetic_data.to_csv(output_path, index=False)
+            # Regular SDV models
+            generator = SDVSyntheticGenerator(
+                algorithm=algorithm,
+                metadata=metadata,
+                context_columns=context_columns or {},
+                epochs=epochs
+            )
+            synthetic_data = generator.generate(real_data=data, num_rows=num_rows)
+
+        # --- Save results with improved data type handling ---
+        try:
+            # Fix any problematic data types before saving
+            for col in synthetic_data.columns:
+                if synthetic_data[col].dtype == 'object':
+                    synthetic_data[col] = synthetic_data[col].astype(str)
+            
+            output_path = os.path.join(UPLOAD_DIR, f"syn_{file_id}.csv")
+            synthetic_data.to_csv(
+                output_path, 
+                index=False,
+                encoding='utf-8',
+                float_format='%.6f'  # Prevent float precision issues
+            )
+            
+        except Exception as save_error:
+            logger.error(f"Save operation failed: {str(save_error)}")
+            # Try alternative save method
+            safe_df = synthetic_data.copy()
+            for col in safe_df.select_dtypes(include=['object']).columns:
+                safe_df[col] = safe_df[col].astype(str)
+            safe_df.to_csv(output_path, index=False)
+            logger.info("Alternative save method succeeded")
 
         logger.info(f"Generation complete for file ID: {file_id}")
         return FileResponse(
@@ -257,38 +328,160 @@ async def generate_data(
             filename="synthetic_data.csv",
             media_type="text/csv"
         )
-    
+
     except Exception as e:
         logger.error(f"Generation failed: {str(e)}")
         raise HTTPException(500, f"Data generation failed: {str(e)}")
 
+@app.post("/evaluate_models")
+async def evaluate_models(
+    file_id: str,
+    target_column: str = "Survived",
+    epochs: int = 100
+):
+    """
+    Model evaluation with pandas compatibility fixes.
+    """
+    start_memory = get_memory_usage_mb()
+    start_time = time.time()
+    
+    try:
+        file_path = os.path.join(UPLOAD_DIR, f"{file_id}.csv")
+        if not os.path.exists(file_path):
+            raise HTTPException(404, f"File not found: {file_id}")
+
+        real_df = pd.read_csv(file_path)
+        if real_df.empty:
+            raise HTTPException(400, "Dataset is empty")
+        
+        # Check if target column exists
+        if target_column and target_column not in real_df.columns:
+            logger.warning(f"Target column '{target_column}' not found, proceeding without target")
+            target_column = None
+
+        logger.info(f"Starting model evaluation for {len(real_df)} samples with {epochs} epochs")
+
+        # Run model comparison
+        df_metrics = synthcity_model_comparison(
+            real_df, 
+            epochs=epochs, 
+            target_column=target_column
+        )
+
+        # Select best model
+        best_model_name, best_model_row = select_best_model(df_metrics, metric_cols)
+
+        # ✅ FIXED: Pandas-compatible JSON-safe results
+        def make_json_safe(value):
+            """Convert value to JSON-safe format with pandas compatibility"""
+            if value is None or pd.isna(value):
+                return None
+            if isinstance(value, (int, float)):
+                # Use numpy instead of pandas for isfinite check
+                if not np.isfinite(value):
+                    return None
+                return float(value)
+            return str(value)
+
+        # Clean the dataframe for JSON serialization
+        metrics_clean = []
+        for _, row in df_metrics.iterrows():
+            clean_row = {}
+            for col, value in row.items():
+                clean_row[col] = make_json_safe(value)
+            metrics_clean.append(clean_row)
+
+        # Prepare best model metrics
+        best_metrics = {}
+        if best_model_row is not None:
+            for col in metric_cols:
+                if col in best_model_row:
+                    best_metrics[col] = make_json_safe(best_model_row[col])
+
+        total_time = time.time() - start_time
+        successful_models = df_metrics[df_metrics['Status'] == 'Success']
+        
+        result = {
+            "summary": {
+                "total_models": len(df_metrics),
+                "successful_models": len(successful_models),
+                "failed_models": len(df_metrics) - len(successful_models),
+                "total_evaluation_time": round(total_time, 2),
+                "best_model": str(best_model_name) if best_model_name else "None",
+                "memory_usage_mb": round(get_memory_usage_mb() - start_memory, 2)
+            },
+            "metrics": metrics_clean,
+            "best_model": str(best_model_name) if best_model_name else "None",
+            "best_model_metrics": best_metrics
+        }
+
+        logger.info(f"Model evaluation completed in {total_time:.1f}s")
+        return result
+
+    except Exception as e:
+        total_time = time.time() - start_time
+        logger.error(f"Model evaluation failed after {total_time:.1f}s: {str(e)}")
+        raise HTTPException(500, f"Model evaluation failed: {str(e)}")
+
 # Visualization
-@app.get("/visualize", response_class=HTMLResponse)
+@app.get("/visualize")
 async def visualize_data(
     file_id: str,
-    column: Optional[str] = None,
-    pair_columns: Optional[str] = None  # Comma-separated string
+    tab: str = Query(..., description="Which visualization to render"),
+    column: str = None,
+    columns: str = None,
+    plot_type: str = "Histogram",
+    overlay: bool = True,
+    show_type: str = "Compare Both"
 ):
+    """
+    Generic visualization endpoint for all visualization tabs.
+    Params depend on `tab` type:
+      - tab: "distribution", "pairplot", "real_vs_synth", "drift", "correlation"
+      - column: column name (distribution)
+      - columns: comma-separated columns (pairplot, real_vs_synth, drift)
+      - plot_type: Histogram/KDE/Boxplot (distribution)
+      - overlay: bool (distribution/pairplot)
+      - show_type: Real/Synthetic/Compare Both (correlation)
+    """
     try:
         syn_path = os.path.join(UPLOAD_DIR, f"syn_{file_id}.csv")
         orig_path = os.path.join(UPLOAD_DIR, f"{file_id}.csv")
 
+        if not os.path.exists(syn_path) or not os.path.exists(orig_path):
+            raise HTTPException(404, "File not found")
+
         synthetic_data = pd.read_csv(syn_path)
-        original_data = pd.read_csv(orig_path)
-        
-        # Process column parameters
-        pair_cols = pair_columns.split(",") if pair_columns else None
-        
-        visualizations = generate_visualizations(
-            real_data=original_data,
-            synthetic_data=synthetic_data,
-            metadata=detect_metadata({"main_table": original_data}),
-            column_name=column,
-            pair_columns=pair_cols
-        )
-        
-        return visualizations['column_plot'] + visualizations['pair_plot']
-    
+        real_data = pd.read_csv(orig_path)
+        metadata = detect_metadata({"main_table": real_data})
+
+        visualizer = DataVisualizer(real_data, synthetic_data, metadata)
+
+        if tab == "distribution":
+            if not column:
+                column = real_data.columns[0]
+            html = visualizer.distribution_plot(column, plot_type, overlay)
+        elif tab == "pairplot":
+            if not columns:
+                columns = ",".join(real_data.columns[:2])
+            cols = [c.strip() for c in columns.split(",")]
+            html = visualizer.pair_plot(cols, overlay)
+        elif tab == "real_vs_synth":
+            if not columns:
+                columns = ",".join(real_data.columns[:2])
+            cols = [c.strip() for c in columns.split(",")]
+            html = visualizer.real_vs_synth_summary(cols)
+        elif tab == "drift":
+            if not columns:
+                columns = ",".join(real_data.columns[:2])
+            cols = [c.strip() for c in columns.split(",")]
+            html = visualizer.drift_detection(cols)
+        elif tab == "correlation":
+            html = visualizer.correlation_heatmap(show_type)
+        else:
+            raise HTTPException(400, f"Unknown visualization tab: {tab}")
+
+        return HTMLResponse(content=html)
     except Exception as e:
         logger.error(f"Visualization failed: {str(e)}")
         raise HTTPException(500, f"Visualization failed: {str(e)}")
