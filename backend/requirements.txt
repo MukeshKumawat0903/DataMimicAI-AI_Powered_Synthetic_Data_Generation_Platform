@@ -36,7 +36,8 @@ torchvision==0.17.2
 # torchaudio==2.3.0
 torchtext==0.17.2
 opacus==1.4.0
-synthcity==0.2.12
+# synthcity==0.2.12
 # dgl==2.2.1
 
-synthcity[all]
+# synthcity[all]
+synthcity[all]==0.2.12
