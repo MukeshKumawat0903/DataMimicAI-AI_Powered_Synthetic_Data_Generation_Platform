@@ -29,7 +29,18 @@ def show_generation_controls():
         return
 
     _show_algorithm_info(selected_algorithm)
-    gen_params = _show_algorithm_parameters(selected_algorithm)
+
+    # Presets and novice/advanced toggle
+    if "gen_preset" not in st.session_state:
+        st.session_state.gen_preset = "Balanced"
+    preset_options = ["Quick (small)", "Balanced", "High Fidelity"]
+    preset = st.radio("Preset", preset_options, index=preset_options.index(st.session_state.gen_preset))
+    st.session_state.gen_preset = preset
+
+    advanced = st.checkbox("Show advanced options", value=False, key="gen_advanced")
+
+    gen_params = _show_algorithm_parameters(selected_algorithm, preset=preset, advanced=advanced)
+    _client_side_sanity_check(gen_params)
     _handle_generation_request(selected_algorithm, gen_params)
 
 
@@ -57,7 +68,7 @@ def _show_algorithm_info(algorithm):
     st.divider()
 
 
-def _show_algorithm_parameters(algorithm):
+def _show_algorithm_parameters(algorithm, preset="Balanced", advanced=False):
     """
     Internal: Show and collect parameters needed for the selected algorithm.
     Returns a dict of parameter values.
@@ -90,14 +101,40 @@ def _show_algorithm_parameters(algorithm):
             step=100
         )
     else:
+        # Preset defaults
+        preset_defaults = {
+            "Quick (small)": 200,
+            "Balanced": 1000,
+            "High Fidelity": 10000
+        }
+        default_rows = preset_defaults.get(preset, 1000)
         params["num_rows"] = st.number_input(
             "Number of Rows to Generate",
-            min_value=100,
-            value=1000,
-            step=500,
+            min_value=10,
+            value=default_rows,
+            step=max(10, int(default_rows/10)),
             format="%d"
         )
+        if advanced:
+            params["epochs"] = st.number_input("Epochs", min_value=1, value=100, step=10)
     return params
+
+
+def _client_side_sanity_check(gen_params):
+    """Estimate memory and warn user for very large generations."""
+    try:
+        num_rows = gen_params.get('num_rows') or gen_params.get('num_sequences') or 0
+        # rough columns estimate from session
+        n_cols = max(1, len(st.session_state.get('original_columns', [])))
+        # assume avg 16 bytes per cell (very rough)
+        est_bytes = int(num_rows) * int(n_cols) * 16
+        est_mb = est_bytes / (1024*1024)
+        if est_mb > 500:
+            st.warning(f"Estimated memory for generation ~{est_mb:.0f} MB. This may be slow or fail on low-memory hosts. Consider using a smaller preset.")
+        else:
+            st.info(f"Estimated memory for generation ~{est_mb:.0f} MB")
+    except Exception:
+        pass
 
 
 def _handle_generation_request(algorithm, gen_params):
