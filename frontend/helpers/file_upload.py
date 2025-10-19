@@ -12,7 +12,9 @@ import os
 
 import frontend_config as config
 
-API_BASE = os.getenv("API_URL", "http://localhost:8000")
+
+def get_api_base():
+    return st.session_state.get('custom_api') or os.getenv("API_URL") or config.API_BASE
 
 def handle_demo_mode():
     """
@@ -30,7 +32,7 @@ def handle_demo_mode():
         try:
             with st.spinner(f"Loading {algorithm} demo..."):
                 response = requests.post(
-                    f"{API_BASE}/load-demo",
+                    f"{get_api_base()}/load-demo",
                     params={"algorithm": algorithm},
                     timeout=10
                 )
@@ -60,9 +62,13 @@ def handle_demo_mode():
                         )
                     st.success("Demo data loaded successfully!")
                 else:
-                    st.error(f"Failed to load demo: {response.json().get('detail', 'Unknown error')}")
+                    try:
+                        err = response.json().get('detail', response.text)
+                    except Exception:
+                        err = response.text
+                    st.error(f"Failed to load demo: {err}")
         except requests.exceptions.ConnectionError:
-            st.error("Could not connect to API server")
+            st.error("Could not connect to API server. Check API URL in sidebar.")
         except Exception as e:
             st.error(f"Error loading demo: {str(e)}")
 
@@ -80,7 +86,7 @@ def handle_file_upload():
         if uploaded_file is not None:
             try:
                 response = requests.post(
-                    f"{API_BASE}/upload",
+                    f"{get_api_base()}/upload",
                     files={"file": uploaded_file.getvalue()}
                 )
                 if response.status_code == 200:

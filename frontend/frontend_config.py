@@ -1,6 +1,14 @@
 import os
 
-API_BASE = os.getenv("API_URL", "http://localhost:8000") 
+# API base used by frontend. Can be overridden by setting API_URL env var.
+API_BASE = os.getenv("API_URL", "http://localhost:8000")
+
+# Optional S3 upload configuration. These are used only if enabled in the
+# environment. Frontend will only attempt S3 uploads when S3_UPLOAD_ENABLED is
+# set to a truthy value (1/true/yes).
+S3_UPLOAD_ENABLED = str(os.getenv("S3_UPLOAD_ENABLED", "false")).lower() in ("1", "true", "yes")
+S3_BUCKET = os.getenv("S3_BUCKET", "")
+S3_REGION = os.getenv("S3_REGION", "")
 
 ALGORITHM_INFO = {
     "CTGAN": {
