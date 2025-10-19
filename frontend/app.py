@@ -27,7 +27,10 @@ from helpers.eda_feature_eng.expander_outlier_and_drift import expander_outlier_
 from helpers.eda_feature_eng.expander_eda_feedback_loop import expander_eda_feedback_loop
 from helpers.advanced_generation import show_advanced_generation_controls
 
-API_BASE = os.getenv("API_URL", "http://localhost:8000")
+from frontend_config import API_BASE as CONFIG_API_BASE
+
+# Use a runtime API base which can be overridden per-session via the UI
+API_BASE = os.getenv("API_URL", CONFIG_API_BASE)
 
 def set_step(n):
     st.session_state.current_step = n
@@ -71,6 +74,11 @@ def main():
         st.session_state.data_history = []
     if 'df' not in st.session_state:
         st.session_state.df = None
+    # allow per-session override of API base (editable in sidebar)
+    if 'custom_api' not in st.session_state:
+        st.session_state.custom_api = None
+    if 'edit_api' not in st.session_state:
+        st.session_state.edit_api = False
 
     st.markdown("""
     <style>
@@ -137,6 +145,22 @@ def main():
         st.divider()
         st.header("Configuration")
         demo_mode = st.checkbox("Use Demo Data")
+        st.markdown("---")
+        st.subheader("API")
+        current_api = st.session_state.custom_api or API_BASE
+        st.write("Current API URL:")
+        st.code(current_api)
+        if st.button("Edit API URL"):
+            st.session_state.edit_api = True
+        if st.session_state.edit_api:
+            new_api = st.text_input("API URL", value=current_api)
+            cols = st.columns([1,1])
+            if cols[0].button("Save API URL"):
+                st.session_state.custom_api = new_api.strip() if new_api else None
+                st.session_state.edit_api = False
+                st.experimental_rerun()
+            if cols[1].button("Cancel"):
+                st.session_state.edit_api = False
         if st.button("Reset App", key="reset_app"):
             for key in [
                 'file_id', 'generated_file_id', 'data_columns', 'original_columns',
@@ -381,6 +405,8 @@ def main():
         if st.button(next_label, key="nav_next_btn"):
             set_step(st.session_state.current_step + 1)
         st.markdown('</div>', unsafe_allow_html=True)
+
+    # Footer: (API display removed — API is available in Sidebar → Configuration)
 
 if __name__ == "__main__":
     main()
