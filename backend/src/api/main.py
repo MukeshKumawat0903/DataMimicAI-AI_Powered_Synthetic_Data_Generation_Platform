@@ -210,13 +210,13 @@ async def load_demo(
 @app.post("/generate")
 async def generate_data(
     file_id: str,
-    algorithm: str = "CTGAN",
-    num_rows: int = 1000,
-    num_sequences: Optional[int] = 3,
-    sequence_length: Optional[int] = 100,
+    algorithm: str = Query("CTGAN", min_length=1),
+    num_rows: int = Query(1000, ge=1, le=5_000_000),
+    num_sequences: Optional[int] = Query(3, ge=1, le=10000),
+    sequence_length: Optional[int] = Query(100, ge=1, le=10_000_000),
     context_columns: Optional[List[str]] = None,
-    epochs: Optional[int] = 100,
-    target_column: str = "Survived"
+    epochs: Optional[int] = Query(100, ge=1, le=100000),
+    target_column: str = Query("Survived")
 ):
     """Generate synthetic data endpoint with fixed SynthCity parameter handling"""
     try:
@@ -332,6 +332,22 @@ async def generate_data(
     except Exception as e:
         logger.error(f"Generation failed: {str(e)}")
         raise HTTPException(500, f"Data generation failed: {str(e)}")
+
+
+@app.get("/health")
+def health_check():
+    """Lightweight health endpoint used by frontend to verify API connectivity."""
+    try:
+        # Quick resource probe (non-blocking)
+        mem = psutil.virtual_memory()
+        return {
+            "status": "ok",
+            "memory_percent": mem.percent,
+            "uptime": time.time()
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        raise HTTPException(500, "Health check failed")
 
 @app.post("/evaluate_models")
 async def evaluate_models(
@@ -485,3 +501,63 @@ async def visualize_data(
     except Exception as e:
         logger.error(f"Visualization failed: {str(e)}")
         raise HTTPException(500, f"Visualization failed: {str(e)}")
+
+
+    @app.get("/metrics")
+    def compute_metrics(file_id: str, columns: str = Query(None, description="Comma-separated columns to evaluate")):
+        """Compute lightweight similarity metrics between real and synthetic for selected columns.
+
+        Returns KS statistic for numeric columns and chi-square p-value for categorical.
+        """
+        try:
+            syn_path = os.path.join(UPLOAD_DIR, f"syn_{file_id}.csv")
+            orig_path = os.path.join(UPLOAD_DIR, f"{file_id}.csv")
+            if not os.path.exists(syn_path) or not os.path.exists(orig_path):
+                raise HTTPException(404, "File not found")
+
+            synthetic_data = pd.read_csv(syn_path)
+            real_data = pd.read_csv(orig_path)
+
+            if not columns:
+                cols = list(set(real_data.columns).intersection(set(synthetic_data.columns)))
+            else:
+                cols = [c.strip() for c in columns.split(',') if c.strip()]
+
+            results = {}
+            for c in cols:
+                try:
+                    if pd.api.types.is_numeric_dtype(real_data[c]):
+                        # KS-test
+                        try:
+                            from scipy.stats import ks_2samp
+                            stat, p = ks_2samp(real_data[c].dropna(), synthetic_data[c].dropna())
+                            results[c] = {"type": "numeric", "ks_stat": float(stat), "p_value": float(p)}
+                        except Exception:
+                            # fallback: compare means and std
+                            r_mean = float(real_data[c].dropna().mean())
+                            s_mean = float(synthetic_data[c].dropna().mean())
+                            results[c] = {"type": "numeric", "mean_real": r_mean, "mean_synth": s_mean}
+                    else:
+                        # categorical: chi-square on value counts
+                        try:
+                            from scipy.stats import chi2_contingency
+                            r_counts = real_data[c].fillna('___NA___').astype(str).value_counts()
+                            s_counts = synthetic_data[c].fillna('___NA___').astype(str).value_counts()
+                            all_index = list(set(r_counts.index).union(set(s_counts.index)))
+                            r_arr = [r_counts.get(i, 0) for i in all_index]
+                            s_arr = [s_counts.get(i, 0) for i in all_index]
+                            table = np.array([r_arr, s_arr])
+                            chi2, p, dof, ex = chi2_contingency(table)
+                            results[c] = {"type": "categorical", "chi2": float(chi2), "p_value": float(p)}
+                        except Exception:
+                            results[c] = {"type": "categorical", "note": "chi2 unavailable"}
+                except Exception as e:
+                    results[c] = {"error": str(e)}
+
+            return {"file_id": file_id, "metrics": results}
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Metrics computation failed: {str(e)}")
+            raise HTTPException(500, f"Metrics computation failed: {str(e)}")

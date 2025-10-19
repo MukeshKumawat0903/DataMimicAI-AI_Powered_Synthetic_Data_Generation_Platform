@@ -169,6 +169,20 @@ def main():
                 st.session_state[key] = None if 'id' in key or key == 'df' else []
             st.session_state.current_step = 0
             st.rerun()
+        
+        # Quick API health check tool
+        cols_api = st.columns([3,1])
+        if cols_api[1].button("Test API"):
+            api_to_test = st.session_state.custom_api or API_BASE
+            try:
+                import requests
+                resp = requests.get(f"{api_to_test.rstrip('/')}/health", timeout=5)
+                if resp.status_code == 200:
+                    st.success("API reachable (health OK)")
+                else:
+                    st.warning(f"API responded with status {resp.status_code}")
+            except Exception as e:
+                st.error(f"API test failed: {str(e)}")
 
     step = st.session_state.current_step
     step_names = [
