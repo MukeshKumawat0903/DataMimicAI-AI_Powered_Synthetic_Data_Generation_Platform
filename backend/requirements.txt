@@ -1,28 +1,28 @@
 # Core
 fastapi==0.109.0
 uvicorn==0.27.0
-python-multipart==0.0.7
+python-multipart>=0.0.18
 
 # Data processing
-pandas==2.1.4
+pandas==2.3.0
 numpy==1.26.4
 
 
 # Synthetic data
 sdv==1.17.4
-faker==24.11.0
+Faker==24.11.0
 
 # Database
 asyncpg==0.29.0
-sqlalchemy[asyncio]==2.0.28
+SQLAlchemy==2.0.28
 
 # Security
-pyjwt[crypto]==2.8.0
-passlib[bcrypt]==1.7.4
+PyJWT==2.8.0
+passlib==1.7.4
 
 #Other
 python-dotenv==1.0.1
-scipy==1.15.1
+scipy==1.16.0
 fpdf==1.7.2
 matplotlib==3.10.1
 seaborn==0.13.2
@@ -31,13 +31,13 @@ psutil==7.0.0
 pio==0.0.3
 
 # Synthcity and DGL
-# torch==2.2.2 
-# torchvision==0.17.2
+torch==2.2.2
+torchvision==0.17.2
 # torchaudio==2.3.0
-# torchtext==0.17.2
+torchtext==0.17.2
 opacus==1.4.0
 synthcity==0.2.12
 # dgl==2.2.1
 
+# If you need extras, you can keep the extras form; pinned to installed version below
 # synthcity[all]
-# synthcity[all]==0.2.12

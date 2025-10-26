@@ -96,6 +96,25 @@ def show_visualization():
                         }
                     )
 
+                    # Fetch metrics from backend and show a summary
+                    try:
+                        resp = requests.get(f"{API_BASE.rstrip('/')}/metrics", params={
+                            "file_id": st.session_state.generated_file_id,
+                            "columns": ",".join(compare_cols)
+                        }, timeout=20)
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            metrics = data.get('metrics', {})
+                            with st.expander("Metrics Summary", expanded=True):
+                                for col, m in metrics.items():
+                                    st.subheader(col)
+                                    for k, v in m.items():
+                                        st.markdown(f"- **{k}**: {v}")
+                        else:
+                            st.info(f"Metrics not available: {resp.status_code}")
+                    except Exception as e:
+                        st.info(f"Metrics request failed: {str(e)}")
+
     # 4. Drift Detection Tab
     with tabs[3]:
         drift_cols = st.multiselect(
