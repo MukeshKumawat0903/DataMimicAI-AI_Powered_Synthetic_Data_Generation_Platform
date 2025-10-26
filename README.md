@@ -131,8 +131,8 @@ With **DataMimicAI**, these benefits become instant, practical, and scalable.
    # Backend:
    uvicorn backend.src.api.main:app --reload --host 0.0.0.0 --port 8000
 
-   # cd frontend:
-   streamlit run app.py
+   # frontend:
+   streamlit run frontend/app.py
    ```
 3. **Upload a CSV or try demo mode, then follow the sidebar steps!**
    - Preview, clean, and generate synthetic data.

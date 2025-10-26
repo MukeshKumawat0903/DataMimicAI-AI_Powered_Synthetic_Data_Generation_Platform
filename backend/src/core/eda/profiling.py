@@ -5,7 +5,7 @@ Class-based modular EDA Profiler with configuration, strict error handling,
 and extensibility for automated data profiling in DataMimicAI.
 
 Usage:
-    from src.core.eda.profiling import Profiler, EDAConfig, ProfilingError
+    from backend.src.core.eda.profiling import Profiler, EDAConfig, ProfilingError
 
     profiler = Profiler(df, config=EDAConfig(high_missing_thresh=0.6))
     profile_result = profiler.dataset_profile()
