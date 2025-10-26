@@ -42,18 +42,14 @@ class SynthCitySyntheticGenerator:
     def fit(self, real_data):
         """Fit the model with resource monitoring and memory optimization"""
         logger.info(f"Starting training for {self.algorithm} with {len(real_data)} samples")
-        print("Test.......................1A")
         # Check system resources before training
         self._check_system_resources()
-        print("Test.......................1B")
         # Start resource monitoring
         monitor_thread = threading.Thread(target=self._monitor_resources, daemon=True)
         self._monitoring = True
         monitor_thread.start()
-        print("Test.......................1C")
         try:
             loader = GenericDataLoader(real_data, target=self.target_column)
-            print("Test.......................1D")
             # Apply memory-efficient settings for intensive models
             if self.algorithm in ['ddpm', 'ctgan', 'tvae']:
                 # Reduce batch size for memory-intensive models if not specified
@@ -64,12 +60,9 @@ class SynthCitySyntheticGenerator:
                 # Add memory optimization for DDPM
                 if self.algorithm == 'ddpm' and 'lr' not in self.plugin_kwargs:
                     self.plugin_kwargs['lr'] = 1e-3  # Conservative learning rate
-            print("Test.......................1E")
             logger.info(f"Plugin kwargs: {self.plugin_kwargs}")
             self.model = Plugins().get(self.algorithm, **self.plugin_kwargs)
-            print("Test.......................1F")
             self.model.fit(loader)
-            print("Test.......................1G")
             logger.info(f"Training completed for {self.algorithm}")
             
         except Exception as e:
@@ -111,7 +104,6 @@ class SynthCitySyntheticGenerator:
         return df
 
     def sample(self, num_rows=1000):
-        print("Test.......................2")
         """Generate synthetic samples with memory management and type fixing"""
         if self.model is None:
             raise RuntimeError("Model not fitted. Call fit() first.")
@@ -121,13 +113,10 @@ class SynthCitySyntheticGenerator:
         try:
             # Generate data
             synth = self.model.generate(count=num_rows)
-            print("Test.......................2A")
             result = synth.dataframe()
-            print("Test.......................2B")
             logger.info(f"Raw generation completed: {result.shape}")
             
             # Fix data types immediately
-            print("Test.......................2C")
             result = self._fix_data_types(result)
             logger.info("Data types fixed")
             
@@ -136,7 +125,6 @@ class SynthCitySyntheticGenerator:
             # gc.collect()
             # if torch.cuda.is_available():
             #     torch.cuda.empty_cache()
-            print("Test.......................3")
             logger.info(f"Successfully generated {len(result)} synthetic samples")
             return result
             
@@ -159,9 +147,7 @@ class SynthCitySyntheticGenerator:
 
     def generate(self, real_data, num_rows=1000):
         """Fit and generate in one call with comprehensive resource management"""
-        print("Test.......................0")
         self.fit(real_data)
-        print("Test.......................1")
         return self.sample(num_rows=num_rows)
 
     def _check_system_resources(self):

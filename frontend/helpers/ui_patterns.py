@@ -252,7 +252,14 @@ def smart_preview_section(df, file_id):
             st.code(", ".join(df.columns[:8]) + (", ..." if len(df.columns) > 8 else ""), language='markdown')
         with col2:
             st.markdown("**Detected Types:**")
-            st.dataframe(df.dtypes.rename('Type').to_frame().head(8), use_container_width=True)
+            # Convert dtype objects to strings so PyArrow/Streamlit can serialize the table
+            try:
+                types_df = df.dtypes.astype(str).rename('Type').to_frame()
+            except Exception:
+                # Fallback: coerce by mapping str() to each value
+                types_df = df.dtypes.rename('Type').to_frame()
+                types_df['Type'] = types_df['Type'].map(lambda v: str(v))
+            st.dataframe(types_df.head(8), use_container_width=True)
             st.markdown("*Full types shown on EDA page*")
         with col3:
             st.markdown("**Missing Values:**")
