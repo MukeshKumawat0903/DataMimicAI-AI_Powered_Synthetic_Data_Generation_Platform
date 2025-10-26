@@ -7,9 +7,9 @@ import numpy as np
 import os
 import io
 
-from src.core.feedback_engine import EDAFeedbackEngine
-from src.core.synth.generator import SDVSyntheticGenerator
-from src.core.data_processing import detect_metadata
+from backend.src.core.feedback_engine import EDAFeedbackEngine
+from backend.src.core.synth.generator import SDVSyntheticGenerator
+from backend.src.core.data_processing import detect_metadata
 
 router = APIRouter(prefix="/feedback-generation", tags=["feedback-generation"])
 

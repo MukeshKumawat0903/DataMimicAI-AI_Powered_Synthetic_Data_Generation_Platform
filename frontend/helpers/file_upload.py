@@ -12,7 +12,9 @@ import os
 
 import frontend_config as config
 
-API_BASE = os.getenv("API_URL", "http://localhost:8000")
+
+def get_api_base():
+    return st.session_state.get('custom_api') or os.getenv("API_URL") or config.API_BASE
 
 def handle_demo_mode():
     """
@@ -30,7 +32,7 @@ def handle_demo_mode():
         try:
             with st.spinner(f"Loading {algorithm} demo..."):
                 response = requests.post(
-                    f"{API_BASE}/load-demo",
+                    f"{get_api_base()}/load-demo",
                     params={"algorithm": algorithm},
                     timeout=10
                 )
@@ -60,9 +62,13 @@ def handle_demo_mode():
                         )
                     st.success("Demo data loaded successfully!")
                 else:
-                    st.error(f"Failed to load demo: {response.json().get('detail', 'Unknown error')}")
+                    try:
+                        err = response.json().get('detail', response.text)
+                    except Exception:
+                        err = response.text
+                    st.error(f"Failed to load demo: {err}")
         except requests.exceptions.ConnectionError:
-            st.error("Could not connect to API server")
+            st.error("Could not connect to API server. Check API URL in sidebar.")
         except Exception as e:
             st.error(f"Error loading demo: {str(e)}")
 
@@ -71,32 +77,65 @@ def handle_file_upload():
     Handles uploading a CSV file, sending it to the backend,
     and updating Streamlit session state with uploaded file info and columns.
     """
+    # Only show uploader if no dataset is selected
     if st.session_state.file_id is None:
         uploaded_file = st.file_uploader(
             "Upload your dataset (CSV)", 
             type=["csv"],
             key="file_uploader"
         )
+
+        MAX_UPLOAD_SIZE = int(os.environ.get('MAX_UPLOAD_SIZE', 10 * 1024 * 1024))  # 10 MB default
+
         if uploaded_file is not None:
+            # Basic client-side size validation
             try:
-                response = requests.post(
-                    f"{API_BASE}/upload",
-                    files={"file": uploaded_file.getvalue()}
-                )
+                raw = uploaded_file.getvalue()
+                size = len(raw)
+                if size > MAX_UPLOAD_SIZE:
+                    st.error(f"File too large ({size/1024/1024:.2f} MB). Max allowed is {MAX_UPLOAD_SIZE/1024/1024:.1f} MB.")
+                    return
+
+                # Show spinner while uploading to backend
+                with st.spinner("Uploading dataset to API..."):
+                    # Send file bytes to backend as multipart/form-data
+                    files = {"file": (uploaded_file.name, raw, "text/csv")}
+                    try:
+                        response = requests.post(
+                            f"{get_api_base()}/upload",
+                            files=files,
+                            timeout=30
+                        )
+                    except requests.exceptions.RequestException as e:
+                        st.error(f"Upload error: {str(e)}")
+                        return
+
                 if response.status_code == 200:
-                    st.session_state.file_id = response.json().get("file_id")
+                    data = response.json()
+                    st.session_state.file_id = data.get("file_id")
                     st.session_state.generated_file_id = None
                     st.session_state.data_columns = []
 
-                    # Store original columns for later
-                    df = pd.read_csv(io.BytesIO(uploaded_file.getvalue()))
-                    st.session_state.original_columns = df.columns.tolist()
-                    st.session_state.uploaded_df = df
+                    # Store original columns for later preview
+                    try:
+                        df = pd.read_csv(io.BytesIO(raw))
+                        st.session_state.original_columns = df.columns.tolist()
+                        st.session_state.uploaded_df = df
+                    except Exception:
+                        # If local parsing fails, still rely on backend metadata
+                        st.session_state.original_columns = data.get('columns', [])
 
                     st.success("File uploaded successfully!")
                     st.rerun()
+
                 else:
-                    st.error(f"Upload failed: {response.json().get('detail', 'Unknown error')}")
+                    # Try to show a helpful error from backend
+                    try:
+                        err = response.json().get('detail', response.text)
+                    except Exception:
+                        err = response.text
+                    st.error(f"Upload failed: {err}")
+
             except Exception as e:
                 st.error(f"Upload error: {str(e)}")
     else:
