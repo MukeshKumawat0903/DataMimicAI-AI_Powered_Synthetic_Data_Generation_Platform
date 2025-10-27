@@ -10,7 +10,7 @@ services:
       pip install -r requirements.txt
     startCommand: |
       cd backend && \
-      uvicorn src.api.main:app --host 0.0.0.0 --port $PORT
+      uvicorn src.api.main:app --host 0.0.0.0 --port 8000
     envVars:
       - key: PYTHON_VERSION # Add this line to specify Python version
         value: 3.11.9
