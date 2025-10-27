@@ -5,28 +5,30 @@ services:
     plan: free
     runtime: python
     buildCommand: |
-      pip install --upgrade pip
-      pip install -r backend/requirements.txt
+      cd backend && \
+      pip install --upgrade pip && \
+      pip install -r requirements.txt
     startCommand: |
       cd backend && \
-      uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+      uvicorn src.api.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: DATABASE_URL
         fromDatabase:
           name: datamimicai-db
           property: connectionString
       - key: UPLOAD_DIR
-        value: /opt/render/project/uploads/
+        value: ./uploads
       - key: PYTHONPATH
-        value: /opt/render/project/backend/
+        value: ./src
 
   - type: web
     name: datamimicai-frontend
     plan: free
     runtime: python
     buildCommand: |
-      pip install --upgrade pip
-      pip install -r frontend/requirements.txt
+      cd frontend && \
+      pip install --upgrade pip && \
+      pip install -r requirements.txt
     startCommand: |
       cd frontend && \
       streamlit run app.py --server.port=$PORT --server.address=0.0.0.0

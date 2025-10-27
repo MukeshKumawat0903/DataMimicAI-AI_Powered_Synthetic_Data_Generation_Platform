@@ -6,22 +6,22 @@ import pandas as pd
 import logging
 import os
 
-from backend.src.core.eda.profiling import (
+from src.core.eda.profiling import (
     Profiler, DataCleaner, EDAConfig, ProfilingError
 )
-from backend.src.core.eda.correlation import (
+from src.core.eda.correlation import (
     CorrelationAnalyzer, CorrelationConfig, CorrelationError, make_corr_heatmap_base64
 )
-from backend.src.core.eda.outliers import (
+from src.core.eda.outliers import (
     OutlierDetector, OutlierConfig, OutlierDetectionError, OutlierCleaner
 )
-from backend.src.core.eda.drift import (
+from src.core.eda.drift import (
     DriftDetector, DriftConfig, DriftDetectionError
 )
-from backend.src.core.feature_engineering.feature_suggester import (
+from src.core.feature_engineering.feature_suggester import (
     FeatureSuggester, FeatureEngConfig, FeatureEngError
 )
-from backend.src.core.eda.utils import outlier_drift_report_pdf
+from src.core.eda.utils import outlier_drift_report_pdf
 
 logger = logging.getLogger(__name__)
 
