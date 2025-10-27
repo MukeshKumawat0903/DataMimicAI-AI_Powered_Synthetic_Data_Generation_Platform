@@ -4,8 +4,8 @@ import numpy as np
 import logging
 import gc
 import psutil
-from backend.src.core.synth.synthcity_generator import SynthCitySyntheticGenerator
-from backend.src.core.synth.config import advanced_models, metric_cols
+from src.core.synth.synthcity_generator import SynthCitySyntheticGenerator
+from src.core.synth.config import advanced_models, metric_cols
 
 # Try to import torch for GPU memory management, fallback if not available
 try:

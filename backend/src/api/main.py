@@ -19,23 +19,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sdv.datasets.demo import download_demo
 
 # Local application imports
-from backend.src.core.database import get_async_db, Base
-from backend.src.core.data_processing import (
+from src.core.database import get_async_db, Base
+from src.core.data_processing import (
     load_data,
     detect_metadata,
     prepare_training_data as data_loader,
     process_demo_data,
 )
-from backend.src.core.visualization import DataVisualizer
-from backend.src.core.database import create_tables
+from src.core.visualization import DataVisualizer
+from src.core.database import create_tables
 
-from backend.src.api.eda_feature_api import router as eda_feature_router
-from backend.src.core.synth.generator import SDVSyntheticGenerator
-from backend.src.core.synth.synthcity_generator import SynthCitySyntheticGenerator
-from backend.src.api.feedback_generate_api import router as feedback_router
-from backend.src.core.synth.model_selection import synthcity_model_comparison, select_best_model, get_memory_usage_mb
+from src.api.eda_feature_api import router as eda_feature_router
+from src.core.synth.generator import SDVSyntheticGenerator
+from src.core.synth.synthcity_generator import SynthCitySyntheticGenerator
+from src.api.feedback_generate_api import router as feedback_router
+from src.core.synth.model_selection import synthcity_model_comparison, select_best_model, get_memory_usage_mb
 
-from backend.src.core.synth.config import advanced_models, metric_cols
+from src.core.synth.config import advanced_models, metric_cols
 
 app = FastAPI()
 app.include_router(eda_feature_router)
