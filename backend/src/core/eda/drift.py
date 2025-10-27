@@ -5,7 +5,7 @@ Class-based drift detection module for DataMimicAI.
 Uses Wasserstein distance and KS-test to detect drift in numeric features.
 
 Usage:
-    from backend.src.core.eda.drift import DriftDetector, DriftConfig, DriftDetectionError
+    from src.core.eda.drift import DriftDetector, DriftConfig, DriftDetectionError
 
     detector = DriftDetector(real_df, synth_df, config=DriftConfig())
     drift_result = detector.detect()

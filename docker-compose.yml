@@ -1,32 +1,57 @@
-version: '3.8'
+version: "3.8"
 
 services:
   backend:
     build:
-      context: ./backend  # Path to backend directory
+      context: ./backend
       dockerfile: Dockerfile
-    image: datamimicai-backend:latest
-    ports:
-      - "8000:8000"
-    volumes:
-      # - ./uploads:/app/uploads  # Maps project root uploads/ to container
-      # - ./backend/src:/app/src  # Maps backend src code
-      - ./backend:/backend
+    image: datamimicai_backend:latest
+    env_file:
+      - .env
     environment:
-      - ENV=development
-      - DATABASE_URL=postgresql://synthadmin:password123@dpg-cn5s6vscn0vc739somqg-a/synthdata
-      - UPLOAD_DIR=/src/uploads
+      - PORT=${BACKEND_PORT:-8000}
+      - HOST=0.0.0.0
+      - BACKEND_MODULE=${BACKEND_MODULE:-src.api.main:app}
+      - UVICORN_WORKERS=${UVICORN_WORKERS:-1}
+      - ENV=${ENV:-production}
+      - DATABASE_URL=${DATABASE_URL:-}
+      - UPLOAD_DIR=/backend/uploads  # Maps to the uploads directory in backend
+    working_dir: /backend
+    ports:
+      - "${BACKEND_PORT:-8000}:${BACKEND_PORT:-8000}"
+    volumes:
+      - ./backend:/backend  # Mount backend code
+      - ./uploads:/backend/uploads  # Mount uploads directory
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:${BACKEND_PORT:-8000}/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
 
   frontend:
     build:
-      context: ./frontend  # Path to frontend directory
+      context: ./frontend
       dockerfile: Dockerfile
-    image: datamimicai-frontend:latest
-    ports:
-      - "8501:8501"
-    volumes:
-      - ./frontend:/app  # Maps frontend code
+    image: datamimicai_frontend:latest
+    env_file:
+      - .env
     environment:
-      - API_URL=http://backend:8000
+      - STREAMLIT_SERVER_PORT=${STREAMLIT_SERVER_PORT:-8501}
+      - ENV=${ENV:-production}
+      - BACKEND_URL=${BACKEND_URL:-http://backend:${BACKEND_PORT:-8000}}
+      - API_URL=http://backend:${BACKEND_PORT:-8000}  # For frontend to reach backend
+    ports:
+      - "${STREAMLIT_SERVER_PORT:-8501}:${STREAMLIT_SERVER_PORT:-8501}"
+    volumes:
+      - ./frontend:/app  # Mount frontend code for development
     depends_on:
       - backend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:${STREAMLIT_SERVER_PORT:-8501} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped

@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 from dotenv import load_dotenv
-from backend.src.core.logger import logger
+from src.core.logger import logger
 import os
 
 # Load environment variables
