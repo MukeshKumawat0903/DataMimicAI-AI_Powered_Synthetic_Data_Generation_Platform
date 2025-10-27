@@ -40,6 +40,9 @@ COPY . /backend
 
 # Ensure proper ownership
 RUN chown -R appuser:appuser /backend
+# Give appuser ownership of the pycox package directory,
+# as it tries to write data inside itself.
+RUN chown -R appuser:appuser /usr/local/lib/python3.11/site-packages/pycox
 USER appuser
 
 # Expose default port
