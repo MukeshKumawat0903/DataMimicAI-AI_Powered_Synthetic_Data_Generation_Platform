@@ -44,7 +44,7 @@ def get_logger(name: str = "backend") -> logging.Logger:
     return logger
 
 
-# Module-level logger for convenient imports: `from backend.src.core.logger import logger`
+# Module-level logger for convenient imports: `from src.core.logger import logger`
 logger = get_logger("data_mimic_backend")
 
 # Small usage note for maintainers:

@@ -5,7 +5,7 @@ Class-based outlier detection module for DataMimicAI.
 Supports IQR and Z-score based outlier detection for numeric columns.
 
 Usage:
-    from backend.src.core.eda.outliers import OutlierDetector, OutlierConfig, OutlierDetectionError
+    from src.core.eda.outliers import OutlierDetector, OutlierConfig, OutlierDetectionError
 
     detector = OutlierDetector(df, config=OutlierConfig(z_thresh=3.0))
     outlier_result = detector.detect()

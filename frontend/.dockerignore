@@ -1,0 +1,19 @@
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+*.log
+
+# Project specific
+.git
+.gitignore
+README.md
+*.md
+Documents*
+notebooks*
+*.csv
