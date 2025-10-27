@@ -12,6 +12,8 @@ services:
       cd backend && \
       uvicorn src.api.main:app --host 0.0.0.0 --port $PORT
     envVars:
+      - key: PYTHON_VERSION # Add this line to specify Python version
+        value: 3.11.9
       - key: DATABASE_URL
         fromDatabase:
           name: datamimicai-db
@@ -26,13 +28,14 @@ services:
     plan: free
     runtime: python
     buildCommand: |
-      cd frontend && \
-      pip install --upgrade pip && \
-      pip install -r requirements.txt
+      pip install --upgrade pip
+      pip install -r frontend/requirements.txt
     startCommand: |
       cd frontend && \
       streamlit run app.py --server.port=$PORT --server.address=0.0.0.0
     envVars:
+      - key: PYTHON_VERSION # Add this line to specify Python version
+        value: 3.11.9
       - key: API_URL
         value: https://datamimicai-backend.onrender.com
 
