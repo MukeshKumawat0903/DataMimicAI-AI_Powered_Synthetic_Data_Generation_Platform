@@ -4,6 +4,11 @@ import requests
 import io
 import os
 import frontend_config as config
+from helpers.progress_ui import (
+    GenerationProgress,
+    handle_generation_error,
+    update_generation_session_state
+)
 
 API_BASE = os.getenv("API_URL", "http://localhost:8000")
 
@@ -92,75 +97,99 @@ def _handle_synthcity_generation_request(algo_code, gen_params):
 
         if algo_code == "AutoML Best Model":
             # AutoML: Evaluate, then call .generate using best model code
-            with st.spinner(f"Evaluating all advanced models with {gen_params['epochs']} epochs..."):
-                params_eval = {
-                    "file_id": file_id,
-                    "target_column": st.session_state.get("target_column", "Survived"),
-                    "epochs": gen_params["epochs"]
-                }
+            with GenerationProgress() as progress:
                 try:
+                    progress.update(10, f"🔧 Preparing AutoML evaluation with {gen_params['epochs']} epochs...")
+
+                    params_eval = {
+                        "file_id": file_id,
+                        "target_column": st.session_state.get("target_column", "Survived"),
+                        "epochs": gen_params["epochs"]
+                    }
+                    progress.update(30, "⚙️ Evaluating advanced models (AutoML)...")
+
                     r_eval = requests.post(f"{API_BASE}/evaluate_models", params=params_eval)
+                    progress.update(60, "⚙️ Processing evaluation results...")
+                    
                     if r_eval.status_code != 200:
-                        st.error(f"AutoML evaluation failed: {r_eval.text}")
+                        handle_generation_error(f"AutoML evaluation failed: {r_eval.text}", "general", 
+                                              progress.progress_bar, progress.status_text)
                         return
+                    
                     result = r_eval.json()
-                    st.success("AutoML: Best model selected!")
                     best_model_display = result["best_model"]
-                    # Map possibly display-name best model to code (for generation)
                     best_model_code = config.DISPLAY_NAME_TO_ALGORITHM.get(best_model_display, best_model_display)
+                    progress.update(80, "✅ AutoML: Best model selected")
+                    
                     st.markdown(f"**AutoML picked:** `{best_model_code}` (trained with {gen_params['epochs']} epochs)")
                     st.table(pd.DataFrame([result["best_model_metrics"]]).T.rename(columns={0: "Score"}))
-                except Exception as e:
-                    st.error(f"Evaluation API error: {e}")
-                    return
 
-                with st.spinner(f"Generating data using **{best_model_code}**..."):
+                    # Now generate using best model
+                    progress.update(90, f"⚙️ Generating data using {best_model_code}...")
                     gen_params_gen = {
                         "file_id": file_id,
                         "algorithm": best_model_code,
                         "num_rows": gen_params["num_rows"],
                         "epochs": gen_params["epochs"]
                     }
-                    try:
-                        r_gen = requests.post(f"{API_BASE}/generate", params=gen_params_gen)
-                        if r_gen.status_code == 200:
-                            df = pd.read_csv(io.StringIO(r_gen.content.decode("utf-8")))
-                            st.session_state.generated_file_id = file_id
-                            st.session_state.data_columns = df.columns.tolist()
-                            st.success("Best-model generation complete!")
-                            st.download_button(
-                                "Download AutoML Synthetic Data",
-                                data=r_gen.content,
-                                file_name="synthetic_data.csv",
-                                mime="text/csv"
-                            )
-                        else:
-                            st.error(f"Generation failed: {r_gen.text}")
-                    except Exception as e:
-                        st.error(f"Generation API error: {e}")
+                    r_gen = requests.post(f"{API_BASE}/generate", params=gen_params_gen, timeout=300)
+
+                    if r_gen.status_code == 200:
+                        progress.complete("✅ Generation complete")
+                        df = pd.read_csv(io.StringIO(r_gen.content.decode("utf-8")))
+                        update_generation_session_state(df, file_id)
+                        st.success("Best-model generation complete!")
+                        st.download_button(
+                            "Download AutoML Synthetic Data",
+                            data=r_gen.content,
+                            file_name="synthetic_data.csv",
+                            mime="text/csv"
+                        )
+                    else:
+                        handle_generation_error(f"Generation failed: {r_gen.text}", "general",
+                                              progress.progress_bar, progress.status_text)
+
+                except requests.exceptions.Timeout:
+                    handle_generation_error("", "timeout", progress.progress_bar, progress.status_text)
+                except requests.exceptions.ConnectionError:
+                    handle_generation_error("", "connection", progress.progress_bar, progress.status_text)
+                except Exception as e:
+                    handle_generation_error(str(e), "api", progress.progress_bar, progress.status_text)
         else:
             # Single algorithm case
-            st.info(f"Generating data with {algo_code.upper()} using {gen_params['epochs']} epochs...")
-            params = {
-                "file_id": file_id,
-                "algorithm": algo_code,
-                "num_rows": gen_params["num_rows"],
-                "epochs": gen_params["epochs"]
-            }
-            try:
-                resp = requests.post(f"{API_BASE}/generate", params=params)
-                if resp.status_code == 200:
-                    df = pd.read_csv(io.StringIO(resp.content.decode("utf-8")))
-                    st.session_state.generated_file_id = file_id
-                    st.session_state.data_columns = df.columns.tolist()
-                    st.success("Generation complete!")
-                    st.download_button(
-                        "Download Synthetic Data",
-                        data=resp.content,
-                        file_name="synthetic_data.csv",
-                        mime="text/csv"
-                    )
-                else:
-                    st.error(f"Generation failed: {resp.text}")
-            except Exception as e:
-                st.error(f"API Error: {e}")
+            with GenerationProgress() as progress:
+                try:
+                    progress.update(10, f"🔧 Preparing generation with {algo_code.upper()}...")
+
+                    params = {
+                        "file_id": file_id,
+                        "algorithm": algo_code,
+                        "num_rows": gen_params["num_rows"],
+                        "epochs": gen_params["epochs"]
+                    }
+                    progress.update(40, f"⚙️ Generating data with {algo_code.upper()}...")
+
+                    resp = requests.post(f"{API_BASE}/generate", params=params, timeout=300)
+                    progress.update(90, "✅ Processing results...")
+
+                    if resp.status_code == 200:
+                        progress.complete("✅ Generation complete")
+                        df = pd.read_csv(io.StringIO(resp.content.decode("utf-8")))
+                        update_generation_session_state(df, file_id)
+                        st.success("Generation complete!")
+                        st.download_button(
+                            "Download Synthetic Data",
+                            data=resp.content,
+                            file_name="synthetic_data.csv",
+                            mime="text/csv"
+                        )
+                    else:
+                        handle_generation_error(f"Generation failed: {resp.text}", "general",
+                                              progress.progress_bar, progress.status_text)
+                        
+                except requests.exceptions.Timeout:
+                    handle_generation_error("", "timeout", progress.progress_bar, progress.status_text)
+                except requests.exceptions.ConnectionError:
+                    handle_generation_error("", "connection", progress.progress_bar, progress.status_text)
+                except Exception as e:
+                    handle_generation_error(str(e), "api", progress.progress_bar, progress.status_text)
