@@ -6,10 +6,20 @@ import pandas as pd
 import numpy as np
 import os
 import io
+import logging
 
 from src.core.feedback_engine import EDAFeedbackEngine
 from src.core.synth.generator import SDVSyntheticGenerator
 from src.core.data_processing import detect_metadata
+
+# Resolve UPLOAD_DIR to absolute path
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", None)
+if not UPLOAD_DIR:
+    current_file = os.path.abspath(__file__)
+    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
+    UPLOAD_DIR = os.path.join(backend_dir, "uploads")
+else:
+    UPLOAD_DIR = os.path.abspath(UPLOAD_DIR)
 
 router = APIRouter(prefix="/feedback-generation", tags=["feedback-generation"])
 
@@ -24,7 +34,7 @@ def generate_and_download(
     Use this endpoint for preview+download combo in frontend.
     """
     try:
-        file_path = os.path.join(os.getenv("UPLOAD_DIR", "uploads"), f"{file_id}.csv")
+        file_path = os.path.join(UPLOAD_DIR, f"{file_id}.csv")
         df = pd.read_csv(file_path)
         # 1. Apply feedback
         feedback_engine = EDAFeedbackEngine(df, feedback)
@@ -43,6 +53,13 @@ def generate_and_download(
             num_sequences=generator_config.get("num_sequences"),
             sequence_length=generator_config.get("sequence_length")
         )
+        # Log the synthetic file path after saving
+        syn_file_path = os.path.join(UPLOAD_DIR, f"syn_{file_id}.csv")
+        logging.info(f"Synthetic file saved at: {syn_file_path}")
+
+        # Save synthetic data
+        synth_df.to_csv(syn_file_path, index=False)
+
         # 4. Clean DataFrame for NaN/inf
         synth_df = synth_df.replace([np.inf, -np.inf], np.nan)
         if synth_df.isnull().any().any():

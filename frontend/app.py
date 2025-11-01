@@ -13,12 +13,17 @@ from helpers.ui_patterns import (
     highlight_changes,
     onboarding_tour,
     sticky_section_header,
-    smart_preview_section
+    smart_preview_section,
+    quick_actions_panel,
+    platform_settings_panel,
+    status_badge,
+    show_new_feature_badge
 )
 
 from helpers.file_upload import handle_demo_mode, handle_file_upload
 from helpers.generation import show_generation_controls
 from helpers.visualization import show_visualization
+from helpers.validation import show_validation_and_refinement
 # from helpers.roadmap import show_feature_placeholders
 from helpers.eda_feature_eng.expander_data_profiling import expander_data_profiling
 from helpers.eda_feature_eng.expander_correlation import expander_correlation
@@ -37,20 +42,20 @@ def set_step(n):
     st.rerun()
 
 def show_eda_and_feature_engineering():
-    # Add sticky tabs using st.tabs (with sticky CSS set below)
+    # Reordered tabs for better workflow: Profile → Suggest → Correlate → Validate → Iterate
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📄 Data Profiling", 
-        "🔗 Correlation", 
-        "💡 Feature Suggestions", 
-        "⚠️ Outlier & Drift", 
+        "📄 Data Profiling",
+        "� Feature Suggestions", 
+        "� Correlation",
+        "⚠️ Outlier & Drift",
         "🔁 Feedback Loop"
     ])
     with tab1:
         expander_data_profiling()
     with tab2:
-        expander_correlation()
-    with tab3:
         expander_feature_suggestions()
+    with tab3:
+        expander_correlation()
     with tab4:
         expander_outlier_and_drift()
     with tab5:
@@ -74,11 +79,27 @@ def main():
         st.session_state.data_history = []
     if 'df' not in st.session_state:
         st.session_state.df = None
+    if 'uploaded_df' not in st.session_state:
+        st.session_state.uploaded_df = None
     # allow per-session override of API base (editable in sidebar)
     if 'custom_api' not in st.session_state:
         st.session_state.custom_api = None
     if 'edit_api' not in st.session_state:
         st.session_state.edit_api = False
+    
+    # Refinement engine state (Phase 4 & 5)
+    if 'generation_history' not in st.session_state:
+        st.session_state.generation_history = []
+    if 'current_generation_version' not in st.session_state:
+        st.session_state.current_generation_version = 0
+    if 'quality_scores_history' not in st.session_state:
+        st.session_state.quality_scores_history = []
+    if 'refinement_recommendations' not in st.session_state:
+        st.session_state.refinement_recommendations = []
+    if 'generation_parameters' not in st.session_state:
+        st.session_state.generation_parameters = {}
+    if 'parameter_changes_log' not in st.session_state:
+        st.session_state.parameter_changes_log = []
 
     st.markdown("""
     <style>
@@ -143,8 +164,13 @@ def main():
         st.divider()
         sidebar_stepper(st.session_state.current_step)
         st.divider()
+        
+        # Quick Actions Panel
+        quick_actions_panel()
+        st.divider()
+        
         st.header("Configuration")
-        demo_mode = st.checkbox("Use Demo Data")
+        demo_mode = st.checkbox("Use Demo Data", help="Load sample data for quick testing")
         st.markdown("---")
         st.subheader("API")
         current_api = st.session_state.custom_api or API_BASE
@@ -161,7 +187,7 @@ def main():
                 st.experimental_rerun()
             if cols[1].button("Cancel"):
                 st.session_state.edit_api = False
-        if st.button("Reset App", key="reset_app"):
+        if st.button("Reset App", key="reset_app", help="Clear all data and restart from Step 0"):
             for key in [
                 'file_id', 'generated_file_id', 'data_columns', 'original_columns',
                 'data_history', 'df'
@@ -171,24 +197,32 @@ def main():
             st.rerun()
         
         # Quick API health check tool
+        st.markdown("---")
+        st.subheader("API Health")
         cols_api = st.columns([3,1])
-        if cols_api[1].button("Test API"):
+        if cols_api[1].button("Test", key="test_api", help="Check if the API is reachable"):
             api_to_test = st.session_state.custom_api or API_BASE
             try:
                 import requests
-                resp = requests.get(f"{api_to_test.rstrip('/')}/health", timeout=5)
+                with st.spinner("Testing API connection..."):
+                    resp = requests.get(f"{api_to_test.rstrip('/')}/health", timeout=5)
                 if resp.status_code == 200:
-                    st.success("API reachable (health OK)")
+                    status_badge("API Online", "complete")
                 else:
-                    st.warning(f"API responded with status {resp.status_code}")
+                    status_badge(f"Status {resp.status_code}", "warning")
             except Exception as e:
-                st.error(f"API test failed: {str(e)}")
+                status_badge("API Offline", "error")
+                st.error(f"Connection failed: {str(e)}")
+        
+        # Platform Settings Panel
+        st.markdown("---")
+        platform_settings_panel()
 
     step = st.session_state.current_step
     step_names = [
-        "Synthetic Data Generation",
-        "EDA & Feature Eng.",
-        "Visualization",
+        "Data Exploration",  # Renamed from "EDA & Feature Eng."
+        "Generate Synthetic Data",  # Renamed from "Synthetic Data Generation"
+        "Validate & Refine",  # Renamed from "Visualization"
         # "Roadmap"
     ]
     n_steps = len(step_names) + 1  # +1 for Roadmap/final
@@ -235,17 +269,54 @@ def main():
             onboarding_tour()
             st.info("➡️ Switch to **Data Upload** to begin.")
 
-    # ---- Step 1: GENERATION ----
+    # ---- Step 1: DATA EXPLORATION (Phase 2: Swapped with old Step 2) ----
     elif step == 1:
         st.markdown('<div id="custom-main-scroll">', unsafe_allow_html=True)
         sticky_section_header(
-            "Synthetic Data Generation",
-            subtitle="Generate high-quality synthetic datasets tailored to your needs.",
-            icon="⚙️"
+            "Data Exploration",
+            subtitle="Understand your data to make informed generation choices",
+            icon="🔍"
         )
         st.divider()
+        
         if not st.session_state.file_id:
-            st.warning("Please upload or select a dataset in the 'Data Upload' step first.")
+            st.warning("📁 Please upload your dataset in Step 0 (Data Upload) first.")
+        else:
+            # Show EDA and Feature Engineering
+            show_eda_and_feature_engineering()
+            if st.session_state.df is not None:
+                st.dataframe(highlight_changes(st.session_state.df, changed_cols=None))
+        
+        sticky_action_bar(
+            apply_label=None,
+            on_apply=None,
+            show_preview=True,
+            on_preview=lambda: preview_modal(
+                "Preview of EDA results.", 
+                st.session_state.df.head() if st.session_state.df is not None else pd.DataFrame()
+            ),
+            show_undo=True,
+            on_undo=undo_last_change,
+            help_text="Explore, transform, and analyze your data here.",
+            key_prefix="eda"
+        )
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+
+    # ---- Step 2: GENERATE SYNTHETIC DATA (Phase 2: Swapped with old Step 1) ----
+    elif step == 2:
+        st.markdown('<div id="custom-main-scroll">', unsafe_allow_html=True)
+        sticky_section_header(
+            "Generate Synthetic Data",
+            subtitle="Create high-quality synthetic datasets based on your data insights",
+            icon="⚙️"
+        )
+
+        st.divider()
+        
+        if not st.session_state.file_id:
+            st.warning("📁 Please complete Step 1 (Data Exploration) first to understand your data.")
         else:
             # Show the generation controls in a tabbed layout
             tabs = st.tabs([
@@ -329,58 +400,25 @@ def main():
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-
-    # ---- Step 2: EDA & FEATURE ENGINEERING ----
-    elif step == 2:
-        st.markdown('<div id="custom-main-scroll">', unsafe_allow_html=True)
-        sticky_section_header(
-            "EDA & Feature Engineering",
-            subtitle="AI-Powered Exploratory Data Analysis and Feature Engineering Tools",
-            icon="🧠"
-        )
-
-        st.divider()
-        if not st.session_state.file_id:
-            st.warning("Upload data first in the 'Data Upload' step.")
-        else:
-            show_eda_and_feature_engineering()
-            if st.session_state.df is not None:
-                st.dataframe(highlight_changes(st.session_state.df, changed_cols=None))
-        sticky_action_bar(
-            apply_label=None,
-            on_apply=None,
-            show_preview=True,
-            on_preview=lambda: preview_modal(
-                "Preview of EDA results.", 
-                st.session_state.df.head() if st.session_state.df is not None else pd.DataFrame()
-                ),
-            show_undo=True,
-            on_undo=undo_last_change,
-            help_text="Explore, transform, and analyze your data here.",
-            key_prefix="eda"
-        )
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    # ---- Step 3: VISUALIZATION ----
+    # ---- Step 3: VALIDATION & REFINEMENT (Phase 3: Restructured with 3-tab layout) ----
     elif step == 3:
         sticky_section_header(
-            "Visualization",
-            subtitle="Visualize your (or synthetic) data.",
-            icon="📊"
+            "Validate & Refine",
+            subtitle="Compare, validate, and iteratively improve your synthetic data",
+            icon="✅"
         )
         st.divider()
-        if not st.session_state.generated_file_id:
-            st.info("Generate synthetic data first in the 'Generation' step.")
-        else:
-            show_visualization()  # Calls the tabbed UI as above
+        
+        # Use new 3-tab validation structure: Quality Report | Detailed Analysis | Iterative Refinement
+        show_validation_and_refinement()
+        
         sticky_action_bar(
             apply_label=None,
             on_apply=None,
             show_preview=False,
             show_undo=False,
-            help_text="Visualize trends, compare real vs. synthetic data, and more.",
-            key_prefix="visualization"
+            help_text="Assess quality, analyze deeply, and refine iteratively.",
+            key_prefix="validation"
         )
 
     # # ---- Step 4: ROADMAP ----
