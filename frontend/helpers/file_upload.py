@@ -68,7 +68,14 @@ def handle_demo_mode():
                         err = response.text
                     st.error(f"Failed to load demo: {err}")
         except requests.exceptions.ConnectionError:
-            st.error("Could not connect to API server. Check API URL in sidebar.")
+            st.error(
+                "❌ **Cannot connect to backend API server!**\n\n"
+                f"The server at `{get_api_base()}` is not running.\n\n"
+                "**To fix this:**\n"
+                "1. Open a new terminal\n"
+                "2. Navigate to the `backend` directory\n"
+                "3. Run: `uvicorn src.api.main:app --reload --port 8000`"
+            )
         except Exception as e:
             st.error(f"Error loading demo: {str(e)}")
 
@@ -106,6 +113,17 @@ def handle_file_upload():
                             files=files,
                             timeout=30
                         )
+                    except requests.exceptions.ConnectionError:
+                        st.error(
+                            "❌ **Cannot connect to backend API server!**\n\n"
+                            f"The server at `{get_api_base()}` is not running.\n\n"
+                            "**To fix this:**\n"
+                            "1. Open a new terminal\n"
+                            "2. Navigate to the `backend` directory\n"
+                            "3. Run: `uvicorn src.api.main:app --reload --port 8000`\n\n"
+                            "Or use **Demo Mode** below to test without uploading."
+                        )
+                        return
                     except requests.exceptions.RequestException as e:
                         st.error(f"Upload error: {str(e)}")
                         return

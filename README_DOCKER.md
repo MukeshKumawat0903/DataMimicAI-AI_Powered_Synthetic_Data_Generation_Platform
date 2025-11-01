@@ -91,7 +91,6 @@ gunicorn -k uvicorn.workers.UvicornWorker -w ${UVICORN_WORKERS:-2} -b 0.0.0.0:${
 
 If you want, I can now run a local `docker-compose build` and attempt verification (if Docker is available). Tell me to proceed.
 
-
 ```bash
 ```# 1. Copy env file
 Copy-Item .env.example .env
@@ -106,4 +105,16 @@ docker-compose build
 # 4. Run in development mode
 docker-compose -f docker-compose.yml -f docker-compose.override.yml up
 ```
+
+```bash
+Both containers are running:
+
+Frontend container:
+Port: 8501
+You can access it at: http://localhost:8501
+
+
+Backend container:
+Port: 8000
+API should be available at: http://localhost:8000
 ```

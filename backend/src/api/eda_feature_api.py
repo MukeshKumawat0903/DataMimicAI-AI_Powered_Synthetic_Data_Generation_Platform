@@ -25,8 +25,18 @@ from src.core.eda.utils import outlier_drift_report_pdf
 
 logger = logging.getLogger(__name__)
 
-UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
+# Resolve UPLOAD_DIR to absolute path, defaulting to backend/uploads
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", None)
+if not UPLOAD_DIR:
+    # If not set, use backend/uploads relative to this file's location
+    current_file = os.path.abspath(__file__)
+    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))  # Go up 3 levels: api -> src -> backend
+    UPLOAD_DIR = os.path.join(backend_dir, "uploads")
+else:
+    UPLOAD_DIR = os.path.abspath(UPLOAD_DIR)
+
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+logger.info(f"EDA API using UPLOAD_DIR: {UPLOAD_DIR}")
 
 router = APIRouter(prefix="/eda")
 

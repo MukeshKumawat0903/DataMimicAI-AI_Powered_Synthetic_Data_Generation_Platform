@@ -10,6 +10,13 @@ import io
 import os
 import json
 import frontend_config as config
+from helpers.progress_ui import (
+    GenerationProgress,
+    handle_generation_error,
+    update_generation_session_state,
+    compute_quality_badges,
+    render_quality_badges
+)
 
 
 def get_api_base():
@@ -33,11 +40,57 @@ def show_generation_controls():
     # Presets and novice/advanced toggle
     if "gen_preset" not in st.session_state:
         st.session_state.gen_preset = "Balanced"
-    preset_options = ["Quick (small)", "Balanced", "High Fidelity"]
-    preset = st.radio("Preset", preset_options, index=preset_options.index(st.session_state.gen_preset))
-    st.session_state.gen_preset = preset
+    if "saved_presets" not in st.session_state:
+        st.session_state.saved_presets = {}
+    
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        preset_options = ["Quick (small)", "Balanced", "High Fidelity"] + list(st.session_state.saved_presets.keys())
+        preset = st.radio(
+            "Preset", 
+            preset_options, 
+            index=preset_options.index(st.session_state.gen_preset) if st.session_state.gen_preset in preset_options else 1,
+            help="Choose a configuration preset or load a saved configuration"
+        )
+        st.session_state.gen_preset = preset
+    
+    with col2:
+        st.markdown("**💾 Presets**")
+        with st.expander("Save/Load"):
+            preset_name = st.text_input("Preset Name", key="preset_name_input", help="Name for your custom preset")
+            if st.button("💾 Save Current", key="save_preset_btn", help="Save current configuration as a preset"):
+                if preset_name:
+                    # Use session state value since selected_algorithm is in scope
+                    st.session_state.saved_presets[preset_name] = {
+                        'algorithm': st.session_state.selected_algorithm,
+                        'preset': preset
+                    }
+                    st.success(f"✅ Saved preset: {preset_name}")
+                else:
+                    st.warning("Please enter a preset name")
+            
+            if st.session_state.saved_presets:
+                st.markdown("**Saved Presets:**")
+                for name in list(st.session_state.saved_presets.keys()):
+                    col_load, col_del = st.columns([3, 1])
+                    with col_load:
+                        if st.button(f"📂 {name}", key=f"load_{name}"):
+                            saved = st.session_state.saved_presets[name]
+                            st.session_state.selected_algorithm = saved['algorithm']
+                            st.session_state.gen_preset = saved['preset']
+                            st.rerun()
+                    with col_del:
+                        if st.button("🗑️", key=f"del_{name}", help="Delete preset"):
+                            del st.session_state.saved_presets[name]
+                            st.rerun()
 
-    advanced = st.checkbox("Show advanced options", value=False, key="gen_advanced")
+    advanced = st.checkbox(
+        "Show advanced options", 
+        value=st.session_state.get('settings', {}).get('advanced_params_default', False), 
+        key="gen_advanced",
+        help="Display advanced configuration parameters"
+    )
 
     gen_params = _show_algorithm_parameters(selected_algorithm, preset=preset, advanced=advanced)
     _client_side_sanity_check(gen_params)
@@ -92,13 +145,15 @@ def _show_algorithm_parameters(algorithm, preset="Balanced", advanced=False):
             "Number of Sequences",
             min_value=1,
             value=1,
-            step=1
+            step=1,
+            help="Number of time series sequences to generate"
         )
         params["sequence_length"] = st.number_input(
             "Sequence Length",
             min_value=100,
             value=5000,
-            step=100
+            step=100,
+            help="Length of each generated sequence"
         )
     else:
         # Preset defaults
@@ -113,10 +168,17 @@ def _show_algorithm_parameters(algorithm, preset="Balanced", advanced=False):
             min_value=10,
             value=default_rows,
             step=max(10, int(default_rows/10)),
-            format="%d"
+            format="%d",
+            help="Total number of synthetic rows to create. More rows = better quality but slower generation"
         )
         if advanced:
-            params["epochs"] = st.number_input("Epochs", min_value=1, value=100, step=10)
+            params["epochs"] = st.number_input(
+                "Epochs", 
+                min_value=1, 
+                value=100, 
+                step=10,
+                help="Training iterations. More epochs = better quality but longer generation time"
+            )
     return params
 
 
@@ -144,32 +206,38 @@ def _handle_generation_request(algorithm, gen_params):
     if gen_params is None:
         return
 
-    if st.button("Generate Synthetic Data", key="generate_btn"):
-        with st.spinner(_get_generation_message(algorithm, gen_params)):
+    if st.button("Generate Synthetic Data", key="generate_btn", help="Start generating synthetic data with selected parameters"):
+        with GenerationProgress() as progress:
             try:
+                progress.update(10, "🔧 Preparing generation request...")
+                
                 api_base = get_api_base()
                 params = {
                     "file_id": st.session_state.file_id,
                     "algorithm": algorithm
                 }
                 params.update(gen_params)
+                
+                progress.update(30, f"⚙️ Generating synthetic data with {algorithm}...")
+                
                 response = requests.post(
                     f"{api_base}/generate",
-                    params=params
+                    params=params,
+                    timeout=300  # 5 minute timeout
                 )
+                
+                progress.update(90, "✅ Processing results...")
 
                 if response.status_code == 200:
-                    st.session_state.generated_file_id = st.session_state.file_id
+                    progress.complete("✅ Generation complete!")
+                    
                     synthetic_df = pd.read_csv(io.StringIO(response.content.decode('utf-8')))
-                    st.session_state.data_columns = synthetic_df.columns.tolist()
-                    st.session_state.data_history = st.session_state.get('data_history', [])
-                    st.session_state.data_history.append(synthetic_df.copy())
-                    st.session_state.df = synthetic_df.copy()
-                    st.success("Generation completed!")
+                    update_generation_session_state(synthetic_df, st.session_state.file_id)
+                    st.success("✅ Generation completed successfully!")
 
                     # Compute lightweight heuristics for badges
-                    badges = _compute_badges(synthetic_df, st.session_state.get('uploaded_df'))
-                    _render_badges(badges)
+                    badges = compute_quality_badges(synthetic_df, st.session_state.get('uploaded_df'))
+                    render_quality_badges(badges)
 
                     st.divider()
                     # Export options
@@ -178,7 +246,8 @@ def _handle_generation_request(algorithm, gen_params):
                         "Download as CSV",
                         data=csv_bytes,
                         file_name="synthetic_data.csv",
-                        mime="text/csv"
+                        mime="text/csv",
+                        help="Download synthetic data in CSV format"
                     )
 
                     # JSON export
@@ -187,7 +256,8 @@ def _handle_generation_request(algorithm, gen_params):
                         "Download as JSON",
                         data=json_bytes,
                         file_name="synthetic_data.json",
-                        mime="application/json"
+                        mime="application/json",
+                        help="Download synthetic data in JSON format"
                     )
 
                     # Parquet export (if pyarrow available)
@@ -200,7 +270,8 @@ def _handle_generation_request(algorithm, gen_params):
                             "Download as Parquet",
                             data=buf,
                             file_name="synthetic_data.parquet",
-                            mime="application/octet-stream"
+                            mime="application/octet-stream",
+                            help="Download synthetic data in Parquet format (compressed)"
                         )
                     except Exception:
                         # Parquet unavailable; show info
@@ -214,89 +285,33 @@ def _handle_generation_request(algorithm, gen_params):
                                 _upload_to_s3(csv_bytes, s3_key)
 
                 else:
-                    st.error(f"Generation failed: {response.text}")
+                    # Enhanced error messaging
+                    error_data = {}
+                    try:
+                        error_data = response.json()
+                    except:
+                        error_data = {"detail": response.text}
+                    
+                    error_msg = f"""**What went wrong:** {error_data.get('detail', 'Unknown error')}
+                    
+**What to try:**
+- Check your data has enough rows (minimum 100 recommended)
+- Reduce number of epochs or rows to generate
+- Try a different algorithm (e.g., GaussianCopula for smaller datasets)
+- Verify API connection in sidebar settings
 
+**Status Code:** {response.status_code}"""
+                    handle_generation_error(error_msg, "general", progress.progress_bar, progress.status_text)
+
+            except requests.exceptions.Timeout:
+                handle_generation_error("", "timeout", progress.progress_bar, progress.status_text)
+                
+            except requests.exceptions.ConnectionError:
+                handle_generation_error("", "connection", progress.progress_bar, progress.status_text)
+                
             except requests.exceptions.RequestException as e:
-                st.error(f"API Error: {str(e)}")
+                handle_generation_error(str(e), "api", progress.progress_bar, progress.status_text)
 
-
-def _compute_badges(synth_df, real_df=None):
-    """Lightweight heuristics for fidelity, privacy risk, and mode collapse.
-
-    These are simple heuristics for UI badges and not rigorous metrics.
-    """
-    badges = {
-        'fidelity': None,
-        'privacy_risk': None,
-        'mode_collapse': None
-    }
-    # Fidelity: compare number of unique values in numeric columns to original (if available)
-    try:
-        if real_df is None:
-            # Without real data, default to 'unknown'
-            badges['fidelity'] = 'unknown'
-        else:
-            num_cols = real_df.select_dtypes(include=['number']).columns
-            if len(num_cols) == 0:
-                badges['fidelity'] = 'n/a'
-            else:
-                ratios = []
-                for c in num_cols:
-                    r_uniques = real_df[c].nunique()
-                    s_uniques = synth_df[c].nunique() if c in synth_df.columns else 0
-                    ratios.append(min(1.0, s_uniques / max(1, r_uniques)))
-                avg = sum(ratios) / len(ratios)
-                if avg > 0.8:
-                    badges['fidelity'] = 'high'
-                elif avg > 0.5:
-                    badges['fidelity'] = 'medium'
-                else:
-                    badges['fidelity'] = 'low'
-    except Exception:
-        badges['fidelity'] = 'unknown'
-
-    # Privacy risk: simple heuristic based on presence of highly unique string columns
-    try:
-        str_cols = synth_df.select_dtypes(include=['object']).columns
-        high_cardinality = 0
-        for c in str_cols:
-            if synth_df[c].nunique() > 0.8 * len(synth_df):
-                high_cardinality += 1
-        if high_cardinality == 0:
-            badges['privacy_risk'] = 'low'
-        elif high_cardinality <= 2:
-            badges['privacy_risk'] = 'medium'
-        else:
-            badges['privacy_risk'] = 'high'
-    except Exception:
-        badges['privacy_risk'] = 'unknown'
-
-    # Mode collapse: look for columns with very low unique counts
-    try:
-        collapse_count = 0
-        for c in synth_df.columns:
-            if synth_df[c].nunique() <= 3 and synth_df.shape[0] > 10:
-                collapse_count += 1
-        if collapse_count == 0:
-            badges['mode_collapse'] = 'no'
-        elif collapse_count <= 2:
-            badges['mode_collapse'] = 'possible'
-        else:
-            badges['mode_collapse'] = 'likely'
-    except Exception:
-        badges['mode_collapse'] = 'unknown'
-
-    return badges
-
-
-def _render_badges(badges: dict):
-    cols = st.columns(3)
-    with cols[0]:
-        st.metric("Fidelity", badges.get('fidelity', 'unknown'))
-    with cols[1]:
-        st.metric("Privacy Risk", badges.get('privacy_risk', 'unknown'))
-    with cols[2]:
-        st.metric("Mode Collapse", badges.get('mode_collapse', 'unknown'))
 
 
 def _upload_to_s3(data_bytes: bytes, key: str):
