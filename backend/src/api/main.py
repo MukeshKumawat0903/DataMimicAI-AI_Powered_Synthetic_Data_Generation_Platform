@@ -47,8 +47,21 @@ def home():
 
 logger = logging.getLogger(__name__)
 
-UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
+# Resolve UPLOAD_DIR to absolute path, defaulting to backend/uploads
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", None)
+if not UPLOAD_DIR:
+    # If not set, use backend/uploads relative to the main.py location
+    # This handles both running from backend/ and from project root
+    current_file = os.path.abspath(__file__)
+    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))  # Go up 3 levels: api -> src -> backend
+    UPLOAD_DIR = os.path.join(backend_dir, "uploads")
+else:
+    UPLOAD_DIR = os.path.abspath(UPLOAD_DIR)
+
+print(f"Using UPLOAD_DIR...............................: {UPLOAD_DIR}")
+
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+logger.info(f"Using UPLOAD_DIR: {UPLOAD_DIR}")
 
 def check_system_resources():
     """Check if system has enough resources for training"""
@@ -343,7 +356,8 @@ def health_check():
         return {
             "status": "ok",
             "memory_percent": mem.percent,
-            "uptime": time.time()
+            "uptime": time.time(),
+            "upload_dir": UPLOAD_DIR  # Show configured upload directory for debugging
         }
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
@@ -503,61 +517,75 @@ async def visualize_data(
         raise HTTPException(500, f"Visualization failed: {str(e)}")
 
 
-    @app.get("/metrics")
-    def compute_metrics(file_id: str, columns: str = Query(None, description="Comma-separated columns to evaluate")):
-        """Compute lightweight similarity metrics between real and synthetic for selected columns.
+@app.get("/metrics")
+def compute_metrics(file_id: str, columns: str = Query(None, description="Comma-separated columns to evaluate")):
+    """Compute lightweight similarity metrics between real and synthetic for selected columns.
 
-        Returns KS statistic for numeric columns and chi-square p-value for categorical.
-        """
-        try:
-            syn_path = os.path.join(UPLOAD_DIR, f"syn_{file_id}.csv")
-            orig_path = os.path.join(UPLOAD_DIR, f"{file_id}.csv")
-            if not os.path.exists(syn_path) or not os.path.exists(orig_path):
-                raise HTTPException(404, "File not found")
+    Returns KS statistic for numeric columns and chi-square p-value for categorical.
+    """
+    try:
+        syn_path = os.path.join(UPLOAD_DIR, f"syn_{file_id}.csv")
+        orig_path = os.path.join(UPLOAD_DIR, f"{file_id}.csv")
 
-            synthetic_data = pd.read_csv(syn_path)
-            real_data = pd.read_csv(orig_path)
+        # Better error logging for debugging
+        if not os.path.exists(syn_path) or not os.path.exists(orig_path):
+            missing_files = []
+            if not os.path.exists(syn_path):
+                missing_files.append(f"syn_{file_id}.csv")
+                logger.warning(f"Synthetic file not found: {syn_path}")
+            if not os.path.exists(orig_path):
+                missing_files.append(f"{file_id}.csv")
+                logger.warning(f"Original file not found: {orig_path}")
 
-            if not columns:
-                cols = list(set(real_data.columns).intersection(set(synthetic_data.columns)))
-            else:
-                cols = [c.strip() for c in columns.split(',') if c.strip()]
+            raise HTTPException(
+                status_code=404,
+                detail=f"File(s) not found in {UPLOAD_DIR}: {', '.join(missing_files)}. Please ensure the files are uploaded or generated correctly."
+            )
 
-            results = {}
-            for c in cols:
-                try:
-                    if pd.api.types.is_numeric_dtype(real_data[c]):
-                        # KS-test
-                        try:
-                            from scipy.stats import ks_2samp
-                            stat, p = ks_2samp(real_data[c].dropna(), synthetic_data[c].dropna())
-                            results[c] = {"type": "numeric", "ks_stat": float(stat), "p_value": float(p)}
-                        except Exception:
-                            # fallback: compare means and std
-                            r_mean = float(real_data[c].dropna().mean())
-                            s_mean = float(synthetic_data[c].dropna().mean())
-                            results[c] = {"type": "numeric", "mean_real": r_mean, "mean_synth": s_mean}
-                    else:
-                        # categorical: chi-square on value counts
-                        try:
-                            from scipy.stats import chi2_contingency
-                            r_counts = real_data[c].fillna('___NA___').astype(str).value_counts()
-                            s_counts = synthetic_data[c].fillna('___NA___').astype(str).value_counts()
-                            all_index = list(set(r_counts.index).union(set(s_counts.index)))
-                            r_arr = [r_counts.get(i, 0) for i in all_index]
-                            s_arr = [s_counts.get(i, 0) for i in all_index]
-                            table = np.array([r_arr, s_arr])
-                            chi2, p, dof, ex = chi2_contingency(table)
-                            results[c] = {"type": "categorical", "chi2": float(chi2), "p_value": float(p)}
-                        except Exception:
-                            results[c] = {"type": "categorical", "note": "chi2 unavailable"}
-                except Exception as e:
-                    results[c] = {"error": str(e)}
+        synthetic_data = pd.read_csv(syn_path)
+        real_data = pd.read_csv(orig_path)
 
-            return {"file_id": file_id, "metrics": results}
+        if not columns:
+            cols = list(set(real_data.columns).intersection(set(synthetic_data.columns)))
+        else:
+            cols = [c.strip() for c in columns.split(',') if c.strip()]
 
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Metrics computation failed: {str(e)}")
-            raise HTTPException(500, f"Metrics computation failed: {str(e)}")
+        results = {}
+        for c in cols:
+            try:
+                if pd.api.types.is_numeric_dtype(real_data[c]):
+                    # KS-test
+                    try:
+                        from scipy.stats import ks_2samp
+                        stat, p = ks_2samp(real_data[c].dropna(), synthetic_data[c].dropna())
+                        results[c] = {"type": "numeric", "ks_stat": float(stat), "p_value": float(p)}
+                    except Exception:
+                        # fallback: compare means and std
+                        r_mean = float(real_data[c].dropna().mean())
+                        s_mean = float(synthetic_data[c].dropna().mean())
+                        results[c] = {"type": "numeric", "mean_real": r_mean, "mean_synth": s_mean}
+                else:
+                    # categorical: chi-square on value counts
+                    try:
+                        from scipy.stats import chi2_contingency
+                        r_counts = real_data[c].fillna('___NA___').astype(str).value_counts()
+                        s_counts = synthetic_data[c].fillna('___NA___').astype(str).value_counts()
+                        all_index = list(set(r_counts.index).union(set(s_counts.index)))
+                        r_arr = [r_counts.get(i, 0) for i in all_index]
+                        s_arr = [s_counts.get(i, 0) for i in all_index]
+                        table = np.array([r_arr, s_arr])
+                        chi2, p, dof, ex = chi2_contingency(table)
+                        results[c] = {"type": "categorical", "chi2": float(chi2), "p_value": float(p)}
+                    except Exception:
+                        results[c] = {"type": "categorical", "note": "chi2 unavailable"}
+            except Exception as e:
+                results[c] = {"error": str(e)}
+
+        return {"file_id": file_id, "metrics": results}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_message = f"An unexpected error occurred during metrics computation: {str(e)}"
+        logger.error(f"{error_message} for file_id {file_id}", exc_info=True)
+        raise HTTPException(status_code=500, detail=error_message)

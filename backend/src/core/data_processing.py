@@ -32,7 +32,15 @@ def process_demo_data(data, metadata, file_id, algorithm):
     """Process and store demo dataset"""
     try:
         # Create uploads directory if not exists
-        upload_dir = Path(os.getenv("UPLOAD_DIR", "uploads"))
+        upload_dir_str = os.getenv("UPLOAD_DIR", None)
+        if not upload_dir_str:
+            # Default to backend/uploads relative to this file
+            current_file = os.path.abspath(__file__)
+            backend_dir = os.path.dirname(os.path.dirname(current_file))  # Go up 2 levels: core -> backend
+            upload_dir = Path(backend_dir) / "uploads"
+        else:
+            upload_dir = Path(os.path.abspath(upload_dir_str))
+        
         upload_dir.mkdir(exist_ok=True)
         
         # Save dataset
