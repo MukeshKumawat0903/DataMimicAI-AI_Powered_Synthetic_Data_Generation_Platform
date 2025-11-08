@@ -29,7 +29,7 @@ from helpers.eda_feature_eng.expander_data_profiling import expander_data_profil
 from helpers.eda_feature_eng.expander_correlation import expander_correlation
 from helpers.eda_feature_eng.expander_feature_suggestions import expander_feature_suggestions
 from helpers.eda_feature_eng.expander_outlier_and_drift import expander_outlier_and_drift
-from helpers.eda_feature_eng.expander_eda_feedback_loop import expander_eda_feedback_loop
+from helpers.eda_feature_eng.expander_privacy_audit import expander_privacy_audit
 from helpers.advanced_generation import show_advanced_generation_controls
 
 from frontend_config import API_BASE as CONFIG_API_BASE
@@ -42,13 +42,13 @@ def set_step(n):
     st.rerun()
 
 def show_eda_and_feature_engineering():
-    # Reordered tabs for better workflow: Profile → Suggest → Correlate → Validate → Iterate
+    # Reordered tabs for better workflow: Profile → Suggest → Correlate → Validate → Privacy
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📄 Data Profiling",
-        "� Feature Suggestions", 
-        "� Correlation",
+        "💡 Feature Suggestions", 
+        "📊 Correlation",
         "⚠️ Outlier & Drift",
-        "🔁 Feedback Loop"
+        "🔒 Privacy Audit"
     ])
     with tab1:
         expander_data_profiling()
@@ -59,7 +59,7 @@ def show_eda_and_feature_engineering():
     with tab4:
         expander_outlier_and_drift()
     with tab5:
-        expander_eda_feedback_loop()
+        expander_privacy_audit()
 
 def main():
     st.set_page_config(page_title="DataMimicAI Synthetic Data Platform", layout="wide")

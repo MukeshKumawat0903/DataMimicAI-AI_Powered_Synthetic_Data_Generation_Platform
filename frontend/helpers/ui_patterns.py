@@ -84,7 +84,7 @@ def show_smart_recommendations(step: int):
         },
         3: {
             "icon": "💡",
-            "tip": "Compare original vs synthetic data quality. Use the feedback loop to iteratively improve results",
+            "tip": "Compare original vs synthetic data quality to validate results",
             "action": None
         }
     }
@@ -272,40 +272,58 @@ def highlight_changes(df, changed_cols=None):
 def onboarding_tour():
     with st.expander("🚀 Take a Quick Tour!", expanded=True):
         st.markdown("""
-        # 👋 Welcome to **DataMimicAI!**
+        # 👋 Welcome to **DataMimicAI**
 
-        **Start your journey in just a few clicks.**  
-        *Here’s how it works:*
-
-        - **📁 Upload or Try Demo Data**  
-        Use the **Data Upload** tab to upload your CSV file — or explore instantly with demo data.
-
-        - **🧐 Smart Preview**  
-        Instantly preview your data’s shape, column types, and spot issues before generation.
-
-        - **⚡ Generate Synthetic Data**  
-        Go to the next step to create high-quality synthetic datasets, fast!
-
-        - **🔬 Explore, Engineer, Analyze**  
-        Dive into your data with built-in feature tools and easy visualizations.
-
-        - **📊 Visualize Results**  
-        Create quick charts and tables for deeper insights.
-
-        # - **🗺️ Roadmap**  
-        # See what’s coming next, and suggest your ideas!
+        Get from raw data to high‑quality synthetic datasets in a few focused steps.
 
         ---
-        ### 💡 **Tips for a Smooth Experience**
-        - Use the **sidebar** to jump between steps at any time.
-        - The **sticky action bar** always shows your next options.
-        - **Demo Mode:** Great for quick trials—no data needed.
+        ## 1) 📁 Upload or Try Demo Data
+        - Use the **Data Upload** tab to add your CSV
+        - Or switch on **Demo Mode** in the sidebar to explore instantly
+
+        ## 2) 🧐 Smart Preview (Auto‑analysis)
+        - Instant overview: shape, column types, missing values, basic stats
+        - Quickly spot schema issues before moving ahead
+
+        ## 3) 🔍 Explore, Engineer, Analyze
+        Inside **Data Exploration** you'll find:
+        - 📄 **Data Profiling** — summary, types, distributions
+        - 🧠 **Feature Suggestions** — smart ideas for transformations
+        - 📊 **Correlation** — relationships at a glance
+        - ⚠️ **Outliers & Drift** — detect anomalies and potential drift
+
+        ## 4) ⚙️ Generate Synthetic Data
+        Choose the approach that fits your needs:
+        - 🚀 **Standard Models (SDV)** — CTGAN, TVAE, GaussianCopula
+        - 💎 **Advanced / AutoML (SynthCity)** — single‑model tuning or best‑model selection
+        - ✍️ **LLM‑Powered** — prompt/schema‑guided generation (experimental)
+
+        ## 5) ✅ Validate & Refine
+        - Quality report and visual comparisons (original vs synthetic)
+        - Track versions, review scores, and **refine iteratively** with recommendations
 
         ---
-
-        **Ready?**  
-        👉 Head to the [Data Upload](#) tab and get started!
+        ### 💡 Tips
+        - Use the **sidebar stepper** to jump between steps anytime
+        - The **sticky action bar** shows context‑aware actions
+        - **Quick Actions** in the sidebar let you download original or synthetic data
+        - Try **Demo Mode** for fast trials — no upload required
         """, unsafe_allow_html=True)
+
+        # Quick CTA buttons to jump to key steps
+        c1, c2, c3, c4 = st.columns(4)
+        if c1.button("Go to Upload", key="tour_go_upload"):
+            st.session_state.current_step = 0
+            st.rerun()
+        if c2.button("Explore Data", key="tour_go_explore"):
+            st.session_state.current_step = 1
+            st.rerun()
+        if c3.button("Generate Data", key="tour_go_generate"):
+            st.session_state.current_step = 2
+            st.rerun()
+        if c4.button("Validate & Refine", key="tour_go_validate"):
+            st.session_state.current_step = 3
+            st.rerun()
 
 
 def sticky_section_header(title, subtitle=None, icon=None):
@@ -356,13 +374,6 @@ def show_feature_highlights():
             st.write("Get instant data quality insights before generation")
             
         with col2:
-            show_new_feature_badge("EDA Feedback Loop")
-            st.write("Iteratively refine synthetic data based on analysis")
-            if st.button("Explore EDA →", key="explore_eda"):
-                st.session_state.current_step = 2
-                st.rerun()
-            
-            st.markdown("---")
             st.markdown("### 📊 Enhanced Visualizations")
             st.write("Compare distributions and validate synthetic data quality")
 
