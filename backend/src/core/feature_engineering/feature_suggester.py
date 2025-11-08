@@ -51,7 +51,7 @@ class FeatureSuggester:
         self.df = df
         self.config = config or FeatureEngConfig()
 
-    def suggest(self, target_col: Optional[str] = None) -> Dict[str, Any]:
+    def suggest(self, target_col: Optional[str] = None, max_suggestions: int = 5) -> Dict[str, Any]:
         suggestions, code_blocks, explanations = [], [], []
         numeric_cols = self.df.select_dtypes(include=[np.number]).columns.tolist()
         object_cols = self.df.select_dtypes(include=['object', 'string']).columns.tolist()
@@ -63,6 +63,12 @@ class FeatureSuggester:
         self._suggest_categorical_features(cat_cols, suggestions, code_blocks, explanations)
         self._suggest_text_features(object_cols, suggestions, code_blocks, explanations)
         importance_scores = self._suggest_feature_importance(target_col, suggestions, code_blocks, explanations)
+
+        # Limit total suggestions to max_suggestions
+        if len(suggestions) > max_suggestions:
+            suggestions = suggestions[:max_suggestions]
+            code_blocks = code_blocks[:max_suggestions]
+            explanations = explanations[:max_suggestions]
 
         return {
             "suggestions": suggestions,
