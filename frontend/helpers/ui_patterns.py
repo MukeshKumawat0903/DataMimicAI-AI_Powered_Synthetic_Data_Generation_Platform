@@ -326,33 +326,14 @@ def onboarding_tour():
             st.rerun()
 
 
-def sticky_section_header(title, subtitle=None, icon=None):
-    """Render a sticky top header (title + optional subtitle) for main page sections."""
-    # CSS block (only inject once per session)
-    if not hasattr(st, "_sticky_header_css"):
-        st.markdown("""
-            <style>
-            .sticky-top {
-                position: -webkit-sticky;
-                position: sticky;
-                top: 0;
-                z-index: 999;
-                background: #181a20;
-                padding: 0.5rem 0 0.4rem;
-                border-bottom: 1px solid #2a2d34;
-            }
-            </style>
-        """, unsafe_allow_html=True)
-        st._sticky_header_css = True
-
+def sticky_section_header(title, icon=None):
+    """Render a sticky top header with consistent spacing for main page sections."""
     icon_html = f"{icon} " if icon else ""
-    subtitle_html = f'<p style="margin:0;color:#a0a0a0;font-size:1.04rem;">{subtitle}</p>' if subtitle else ""
 
     st.markdown(
         f"""
         <div class="sticky-top">
-            <h1 style="margin:0;">{icon_html}{title}</h1>
-            {subtitle_html}
+            <h1 class="main-page-heading">{icon_html}{title}</h1>
         </div>
         """,
         unsafe_allow_html=True,

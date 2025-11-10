@@ -20,6 +20,9 @@ from helpers.ui_patterns import (
     show_new_feature_badge
 )
 
+# Enhanced Smart Preview
+from helpers.smart_preview_enhanced import smart_preview_with_comparisons
+
 from helpers.file_upload import handle_demo_mode, handle_file_upload
 from helpers.generation import show_generation_controls
 from helpers.visualization import show_visualization
@@ -28,8 +31,9 @@ from helpers.validation import show_validation_and_refinement
 from helpers.eda_feature_eng.expander_data_profiling import expander_data_profiling
 from helpers.eda_feature_eng.expander_correlation import expander_correlation
 from helpers.eda_feature_eng.expander_feature_suggestions import expander_feature_suggestions
-from helpers.eda_feature_eng.expander_outlier_and_drift import expander_outlier_and_drift
+from helpers.eda_feature_eng.expander_outlier_and_drift import expander_outlier_detection_remediation
 from helpers.eda_feature_eng.expander_privacy_audit import expander_privacy_audit
+from helpers.eda_feature_eng.expander_timeseries_analysis import expander_timeseries_analysis
 from helpers.advanced_generation import show_advanced_generation_controls
 
 from frontend_config import API_BASE as CONFIG_API_BASE
@@ -42,13 +46,14 @@ def set_step(n):
     st.rerun()
 
 def show_eda_and_feature_engineering():
-    # Reordered tabs for better workflow: Profile → Suggest → Correlate → Validate → Privacy
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    # Reordered tabs for better workflow: Profile → Suggest → Correlate → Validate → Privacy → Time-Series
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📄 Data Profiling",
         "💡 Feature Suggestions", 
         "📊 Correlation",
-        "⚠️ Outlier & Drift",
-        "🔒 Privacy Audit"
+        "⚠️ Outlier Detection",
+        "🔒 Privacy Audit",
+        "⏰ Time-Series Analysis"
     ])
     with tab1:
         expander_data_profiling()
@@ -57,9 +62,11 @@ def show_eda_and_feature_engineering():
     with tab3:
         expander_correlation()
     with tab4:
-        expander_outlier_and_drift()
+        expander_outlier_detection_remediation()
     with tab5:
         expander_privacy_audit()
+    with tab6:
+        expander_timeseries_analysis()
 
 def main():
     st.set_page_config(page_title="DataMimicAI Synthetic Data Platform", layout="wide")
@@ -103,27 +110,84 @@ def main():
 
     st.markdown("""
     <style>
+    /* Cache buster v2.0 - Updated spacing */
+    
+    /* Aggressive global spacing reset */
+    .main .block-container {
+        padding-top: 0 !important;
+        padding-bottom: 1rem !important;
+    }
+
+    div[data-testid="stAppViewBlockContainer"] {
+        padding-top: 0 !important;
+    }
+
+    div[data-testid="stVerticalBlock"] {
+        padding-top: 0 !important;
+        margin-top: 0 !important;
+    }
+    
+    section[data-testid="stAppViewContainer"] {
+        padding-top: 0 !important;
+    }
+    
+    /* Sticky header styling */
     .sticky-top {
         position: sticky;
         top: 0;
         z-index: 999;
-        background: #181a20;
-        padding: 0.3rem 0 0.2rem;
-        border-bottom: 1px solid #23242b;
+        background: #0e1117;
+        padding: 0.5rem 0 0.5rem 0 !important;
+        margin-top: 0 !important;
+        margin-bottom: 0.75rem !important;
+        border-bottom: 2px solid #1f2937;
     }
+
+    #custom-main-scroll {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+    }
+    
     .sticky-top-title {
         font-size: 1.3rem;
         font-weight: 700;
-        margin: 0;
+        margin: 0 !important;
         line-height: 1.1;
         display: flex;
         align-items: center;
         gap: 0.6em;
     }
+    
     .sticky-top-caption {
-        font-size: 1.01rem;
-        margin: 0;
-        color: #a0a0a0;
+        font-size: 0.95rem;
+        margin: 0.25rem 0 0 0;
+        color: #9ca3af;
+    }
+    
+    /* Main page heading class */
+    .main-page-heading {
+        font-size: 1.75rem !important;
+        font-weight: 600 !important;
+        margin-top: 0 !important;
+        margin-bottom: 0.5rem !important;
+        padding-top: 0 !important;
+        line-height: 1.2 !important;
+    }
+    
+    /* Reduce spacing before tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0.5rem;
+        margin-top: 0;
+    }
+    
+    /* Tab styling improvements */
+    .stTabs [data-baseweb="tab"] {
+        padding: 0.5rem 1rem;
+    }
+    
+    /* Reduce spacing after divider */
+    hr {
+        margin: 0.75rem 0;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -231,10 +295,8 @@ def main():
     if step == 0:
         sticky_section_header(
             "Data Upload",
-            subtitle="Upload your dataset to get started.",
             icon="📁"
         )
-        st.divider()
 
         # Put Tour last so upload tab is always first after rerun
         tab_titles = [
@@ -262,7 +324,8 @@ def main():
         with preview_tab:
             file_id = st.session_state.get('file_id')
             df = st.session_state.get('uploaded_df')
-            smart_preview_section(df, file_id)
+            # Use enhanced smart preview with transformation comparisons
+            smart_preview_with_comparisons(df, file_id)
 
         # --- 3. Quick Tour Tab ---
         with tour_tab:
@@ -274,10 +337,8 @@ def main():
         st.markdown('<div id="custom-main-scroll">', unsafe_allow_html=True)
         sticky_section_header(
             "Data Exploration",
-            subtitle="Understand your data to make informed generation choices",
             icon="🔍"
         )
-        st.divider()
         
         if not st.session_state.file_id:
             st.warning("📁 Please upload your dataset in Step 0 (Data Upload) first.")
@@ -309,11 +370,8 @@ def main():
         st.markdown('<div id="custom-main-scroll">', unsafe_allow_html=True)
         sticky_section_header(
             "Generate Synthetic Data",
-            subtitle="Create high-quality synthetic datasets based on your data insights",
             icon="⚙️"
         )
-
-        st.divider()
         
         if not st.session_state.file_id:
             st.warning("📁 Please complete Step 1 (Data Exploration) first to understand your data.")
@@ -404,10 +462,8 @@ def main():
     elif step == 3:
         sticky_section_header(
             "Validate & Refine",
-            subtitle="Compare, validate, and iteratively improve your synthetic data",
             icon="✅"
         )
-        st.divider()
         
         # Use new 3-tab validation structure: Quality Report | Detailed Analysis | Iterative Refinement
         show_validation_and_refinement()

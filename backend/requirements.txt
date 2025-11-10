@@ -11,6 +11,8 @@ numpy==1.26.4
 distfit==1.8.9
 presidio-analyzer==2.2.354
 ennemi==1.3.0
+statsmodels>=0.14.0
+scikit-learn>=1.3.0  # For outlier detection (Isolation Forest, LOF) and drift classifier
 
 # Synthetic data
 sdv==1.17.4
@@ -26,11 +28,12 @@ passlib==1.7.4
 
 #Other
 python-dotenv==1.0.1
-scipy==1.16.0
+scipy>=1.10.0
 fpdf==1.7.2
 matplotlib==3.10.1
 seaborn==0.13.2
 psutil==7.0.0
+plotly>=5.0.0
 
 pio==0.0.3
 
