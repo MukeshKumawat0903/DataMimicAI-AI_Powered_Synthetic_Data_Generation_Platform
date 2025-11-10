@@ -16,18 +16,29 @@ from src.core.eda.correlation import (
     MutualInformationAnalyzer, compute_mi_matrix
 )
 from src.core.eda.outliers import (
-    OutlierDetector, OutlierConfig, OutlierDetectionError, OutlierCleaner
+    OutlierDetector, OutlierConfig, OutlierDetectionError, OutlierCleaner,
+    load_outlier_metadata_file
 )
 from src.core.eda.drift import (
-    DriftDetector, DriftConfig, DriftDetectionError
+    DriftDetector, DriftConfig, DriftDetectionError,
+    load_drift_metadata_file
 )
 from src.core.feature_engineering.feature_suggester import (
     FeatureSuggester, FeatureEngConfig, FeatureEngError
 )
+from src.core.feature_engineering.utility_suggester import UtilitySuggester
+from src.core.feature_engineering.privacy_suggester import PrivacySuggester
+from src.core.feature_engineering.pet_constants import PET_TYPES, is_pet
+from src.core.feature_engineering.conflict_resolver import ConflictResolver
 from src.core.eda.utils import outlier_drift_report_pdf
 from src.core.eda.dependencies import DependencyDetector
 from src.core.eda.privacy import KAnonymityAnalyzer
 from src.core.eda.pii_scan import PIIScanner, run_pii_scan_fast, run_pii_scan_deep
+from src.core.eda.timeseries import (
+    TimeSeriesDetector, TimeSeriesAnalyzer, TimeSeriesError,
+    detect_timeseries, compute_acf_pacf, decompose_timeseries
+)
+from src.core.feedback_engine import TransformConfigManager, EDAFeedbackEngine
 
 logger = logging.getLogger(__name__)
 
@@ -319,14 +330,288 @@ async def api_detect_drift(
     real_file_id: str = Query(...),
     synth_file_id: str = Query(...)
 ):
-    """Detect distributional drift between real and synthetic datasets."""
+    """Detect distributional drift between real and synthetic datasets (legacy endpoint)."""
     real_df = load_df_by_file_id(real_file_id)
     synth_df = load_df_by_file_id(synth_file_id)
     try:
         detector = DriftDetector(real_df, synth_df)
-        results = detector.detect()
+        # Use analyze_all() instead of non-existent detect()
+        results = detector.analyze_all(methods=['ks', 'psi', 'chi2', 'classifier'])
         return JSONResponse(results)
     except DriftDetectionError as e:
+        raise HTTPException(422, str(e))
+
+# ============================================================================
+# 4.1 Comprehensive Outlier & Drift Detection (New Enhanced Endpoints)
+# ============================================================================
+
+@router.post("/outliers/detect-comprehensive")
+async def detect_outliers_comprehensive_endpoint(
+    file_id: str = Query(...),
+    methods: str = Query("zscore,iqr,mad", description="Comma-separated: zscore,iqr,mad,isolation_forest,lof"),
+    columns: str = Query(None, description="Comma-separated column names (optional)")
+):
+    """
+    Comprehensive outlier detection using multiple methods.
+    Supports: Z-score, IQR, MAD, Isolation Forest, LOF
+    """
+    df = load_df_by_file_id(file_id)
+    methods_list = [m.strip() for m in methods.split(",")]
+    columns_list = [c.strip() for c in columns.split(",")] if columns else None
+    
+    try:
+        from src.core.eda.outliers import detect_outliers_comprehensive
+        
+        results = detect_outliers_comprehensive(
+            df=df,
+            file_id=file_id,
+            methods=methods_list,
+            columns=columns_list
+        )
+        return JSONResponse(results)
+    except Exception as e:
+        logger.error(f"Comprehensive outlier detection failed: {str(e)}")
+        raise HTTPException(422, str(e))
+
+
+@router.post("/outliers/detect-timeseries")
+async def detect_timeseries_outliers_endpoint(
+    file_id: str = Query(...),
+    value_col: str = Query(..., description="Numeric column for outlier detection"),
+    datetime_col: str = Query(..., description="Datetime column"),
+    freq: str = Query(None, description="Time-series frequency (e.g., 'D', 'H', 'M')")
+):
+    """Detect outliers in time-series using STL decomposition residuals."""
+    df = load_df_by_file_id(file_id)
+    
+    try:
+        detector = OutlierDetector(df)
+        results = detector.detect_timeseries_outliers(value_col, datetime_col, freq)
+        
+        # Save metadata
+        metadata_path = detector.save_metadata(file_id, results)
+        results["metadata_path"] = metadata_path
+        
+        return JSONResponse(results)
+    except OutlierDetectionError as e:
+        raise HTTPException(422, str(e))
+
+
+@router.post("/outliers/detect-cooks-distance")
+async def detect_cooks_distance_endpoint(
+    file_id: str = Query(...),
+    target_col: str = Query(..., description="Target variable for regression"),
+    feature_cols: str = Query(None, description="Comma-separated feature columns (optional)")
+):
+    """Detect influential outliers using Cook's Distance from regression."""
+    df = load_df_by_file_id(file_id)
+    features = [f.strip() for f in feature_cols.split(",")] if feature_cols else None
+    
+    try:
+        detector = OutlierDetector(df)
+        results = detector.detect_cooks_distance(target_col, features)
+        
+        # Save metadata
+        metadata_path = detector.save_metadata(file_id, results)
+        results["metadata_path"] = metadata_path
+        
+        return JSONResponse(results)
+    except OutlierDetectionError as e:
+        raise HTTPException(422, str(e))
+
+
+@router.post("/drift/analyze-comprehensive")
+async def analyze_drift_comprehensive_endpoint(
+    ref_file_id: str = Query(..., description="Reference dataset file ID"),
+    cur_file_id: str = Query(..., description="Current dataset file ID"),
+    methods: str = Query("ks,psi", description="Comma-separated: ks,chi_square,psi,classifier"),
+    columns: str = Query(None, description="Comma-separated column names (optional)")
+):
+    """
+    Comprehensive drift analysis using multiple methods.
+    Supports: KS test, Chi-square, PSI, Drift Classifier
+    """
+    df_ref = load_df_by_file_id(ref_file_id)
+    df_cur = load_df_by_file_id(cur_file_id)
+    methods_list = [m.strip() for m in methods.split(",")]
+    columns_list = [c.strip() for c in columns.split(",")] if columns else None
+    
+    try:
+        from src.core.eda.drift import analyze_drift_comprehensive
+        
+        results = analyze_drift_comprehensive(
+            df_reference=df_ref,
+            df_current=df_cur,
+            file_id_ref=ref_file_id,
+            file_id_cur=cur_file_id,
+            methods=methods_list,
+            columns=columns_list
+        )
+        return JSONResponse(results)
+    except Exception as e:
+        logger.error(f"Comprehensive drift analysis failed: {str(e)}")
+        raise HTTPException(422, str(e))
+
+
+@router.get("/outliers/metadata/{file_id}")
+async def get_outlier_metadata(file_id: str):
+    """Retrieve saved outlier detection metadata."""
+    try:
+        metadata = load_outlier_metadata_file(file_id)
+        if metadata:
+            return JSONResponse(metadata)
+        else:
+            raise HTTPException(404, "Metadata not found for this file_id")
+    except Exception as e:
+        raise HTTPException(422, str(e))
+
+
+@router.get("/drift/metadata/{ref_file_id}/{cur_file_id}")
+async def get_drift_metadata(ref_file_id: str, cur_file_id: str):
+    """Retrieve saved drift analysis metadata."""
+    try:
+        metadata = load_drift_metadata_file(ref_file_id, cur_file_id)
+        if metadata:
+            return JSONResponse(metadata)
+        else:
+            raise HTTPException(404, "Metadata not found for these file_ids")
+    except Exception as e:
+        raise HTTPException(422, str(e))
+
+# ============================================================================
+# 4.2 Outlier Remediation Endpoints
+# ============================================================================
+
+@router.post("/outliers/remediate")
+async def remediate_outliers_endpoint(
+    file_id: str = Query(...),
+    method: str = Query(..., description="winsorize, cap, remove, bin, transform"),
+    columns: str = Query(..., description="Comma-separated column names"),
+    body: dict = Body(default={})
+):
+    """
+    Apply outlier remediation method.
+    Supports: winsorize, cap, remove, bin, transform
+    """
+    df = load_df_by_file_id(file_id)
+    columns_list = [c.strip() for c in columns.split(",")]
+    
+    try:
+        from src.core.eda.remediation import remediate_outliers
+        
+        df_result, metadata = remediate_outliers(
+            df=df,
+            file_id=file_id,
+            method=method,
+            columns=columns_list,
+            **body
+        )
+        
+        # Save the remediated dataset
+        output_file_id = body.get('output_file_id', f"{file_id}_remediated")
+        output_path = os.path.join(UPLOAD_DIR, f"{output_file_id}.csv")
+        df_result.to_csv(output_path, index=False)
+        
+        return JSONResponse({
+            "status": "success",
+            "method": method,
+            "columns": columns_list,
+            "output_file_id": output_file_id,
+            "n_rows": len(df_result),
+            "metadata": metadata
+        })
+    except Exception as e:
+        logger.error(f"Remediation failed: {str(e)}")
+        raise HTTPException(422, str(e))
+
+
+@router.post("/outliers/winsorize")
+async def winsorize_endpoint(
+    file_id: str = Query(...),
+    columns: str = Query(...),
+    lower_limit: float = Query(0.05, description="Lower percentile (0-1)"),
+    upper_limit: float = Query(0.05, description="Upper percentile (0-1)")
+):
+    """Winsorize outliers by capping at percentiles."""
+    df = load_df_by_file_id(file_id)
+    columns_list = [c.strip() for c in columns.split(",")]
+    
+    try:
+        from src.core.eda.remediation import OutlierRemediator
+        
+        remediator = OutlierRemediator(df)
+        df_result = remediator.winsorize(columns_list, limits=(lower_limit, upper_limit))
+        
+        # Save
+        df_result.to_csv(os.path.join(UPLOAD_DIR, f"{file_id}.csv"), index=False)
+        metadata_path = remediator.save_metadata(file_id)
+        
+        return JSONResponse({
+            "status": "success",
+            "method": "winsorize",
+            "columns": columns_list,
+            "limits": [lower_limit, upper_limit],
+            "history": remediator.get_remediation_history(),
+            "metadata_path": metadata_path
+        })
+    except Exception as e:
+        raise HTTPException(422, str(e))
+
+
+@router.post("/outliers/cap")
+async def cap_outliers_endpoint(
+    file_id: str = Query(...),
+    columns: str = Query(...),
+    cap_method: str = Query("iqr", description="'iqr' or 'percentile'"),
+    multiplier: float = Query(1.5, description="IQR multiplier"),
+    lower_percentile: float = Query(1.0, description="Lower percentile for percentile method"),
+    upper_percentile: float = Query(99.0, description="Upper percentile for percentile method")
+):
+    """Cap outliers using IQR or percentile method."""
+    df = load_df_by_file_id(file_id)
+    columns_list = [c.strip() for c in columns.split(",")]
+    
+    try:
+        from src.core.eda.remediation import OutlierRemediator
+        
+        remediator = OutlierRemediator(df)
+        df_result = remediator.cap_outliers(
+            columns_list,
+            method=cap_method,
+            multiplier=multiplier,
+            percentiles=(lower_percentile, upper_percentile)
+        )
+        
+        # Save
+        df_result.to_csv(os.path.join(UPLOAD_DIR, f"{file_id}.csv"), index=False)
+        metadata_path = remediator.save_metadata(file_id)
+        
+        return JSONResponse({
+            "status": "success",
+            "method": f"cap_{cap_method}",
+            "columns": columns_list,
+            "history": remediator.get_remediation_history(),
+            "metadata_path": metadata_path
+        })
+    except Exception as e:
+        raise HTTPException(422, str(e))
+
+
+@router.get("/outliers/remediation-history/{file_id}")
+async def get_remediation_history(file_id: str):
+    """Retrieve remediation history for a file."""
+    try:
+        from src.core.eda.remediation import OutlierRemediator
+        
+        # Create dummy instance to load metadata
+        remediator = OutlierRemediator(pd.DataFrame())
+        metadata = remediator.load_metadata(file_id)
+        
+        if metadata:
+            return JSONResponse(metadata)
+        else:
+            raise HTTPException(404, "No remediation history found")
+    except Exception as e:
         raise HTTPException(422, str(e))
 
 # ============================================================================
@@ -349,6 +634,979 @@ async def feature_suggestions(
         return JSONResponse(results)
     except FeatureEngError as e:
         raise HTTPException(422, str(e))
+
+
+@router.post("/context-aware-suggestions")
+async def context_aware_suggestions(
+    file_id: str = Query(...),
+    include_profiling: bool = Query(True),
+    include_pii: bool = Query(True),
+    include_k_anonymity: bool = Query(True)
+):
+    """
+    Generate context-aware feature suggestions combining utility and privacy analysis.
+    Returns utility suggestions, privacy suggestions, and conflicts.
+    """
+    df = load_df_by_file_id(file_id)
+    
+    try:
+        result = {
+            "file_id": file_id,
+            "utility_suggestions": [],
+            "privacy_suggestions": [],
+            "conflicts": [],
+            "conflict_summary": {},
+            "non_conflicting_utility": [],
+            "non_conflicting_privacy": [],
+            "metadata": {}
+        }
+        
+        # Step 1: Generate utility-driven suggestions
+        profiling_data = None
+        if include_profiling:
+            try:
+                profiler = Profiler(df)
+                profiling_data = profiler.dataset_profile()
+            except Exception as e:
+                logger.warning(f"Profiling failed: {e}")
+        
+        utility_suggester = UtilitySuggester(df, profile_data=profiling_data)
+        utility_suggestions = utility_suggester.suggest_utility_transforms()
+        result["utility_suggestions"] = utility_suggestions
+        
+        # Step 2: Generate privacy-driven suggestions
+        pii_report = None
+        k_anonymity_report = None
+        
+        if include_pii:
+            try:
+                pii_scanner = PIIScanner(df)
+                pii_report = pii_scanner.run_fast_scan()
+            except Exception as e:
+                logger.warning(f"PII scan failed: {e}")
+        
+        if include_k_anonymity:
+            try:
+                k_analyzer = KAnonymityAnalyzer(df)
+                potential_qis = k_analyzer.identify_potential_qis()
+                k_anonymity_report = {"potential_qis": potential_qis}
+            except Exception as e:
+                logger.warning(f"K-anonymity analysis failed: {e}")
+        
+        privacy_suggester = PrivacySuggester(df, pii_report=pii_report, k_anonymity_report=k_anonymity_report)
+        privacy_suggestions = privacy_suggester.suggest_privacy_transforms()
+        result["privacy_suggestions"] = privacy_suggestions
+        
+        # Step 3: Detect conflicts
+        conflict_resolver = ConflictResolver()
+        conflicts = conflict_resolver.detect_conflicts(utility_suggestions, privacy_suggestions)
+        result["conflicts"] = conflicts
+        result["conflict_summary"] = conflict_resolver.generate_conflict_summary()
+        
+        # Step 4: Separate non-conflicting suggestions
+        non_conflicting_utility, non_conflicting_privacy = conflict_resolver.get_non_conflicting_suggestions(
+            utility_suggestions, privacy_suggestions
+        )
+        result["non_conflicting_utility"] = non_conflicting_utility
+        result["non_conflicting_privacy"] = non_conflicting_privacy
+        
+        # Add metadata
+        result["metadata"] = {
+            "total_utility_suggestions": len(utility_suggestions),
+            "total_privacy_suggestions": len(privacy_suggestions),
+            "total_conflicts": len(conflicts),
+            "total_columns_analyzed": len(df.columns),
+            "profiling_included": include_profiling,
+            "pii_scan_included": include_pii,
+            "k_anonymity_included": include_k_anonymity
+        }
+        
+        return JSONResponse(result)
+        
+    except Exception as e:
+        logger.error(f"Context-aware suggestions failed: {e}")
+        raise HTTPException(500, f"Failed to generate suggestions: {str(e)}")
+
+
+@router.post("/resolve-conflict")
+async def resolve_conflict(
+    file_id: str = Query(...),
+    column: str = Query(...),
+    chosen_category: str = Query(...),
+    chosen_transformation: str = Query(...),
+    user_note: str = Query(None)
+):
+    """
+    Record a user's resolution of a conflict between utility and privacy suggestions.
+    """
+    try:
+        conflict_resolver = ConflictResolver()
+        resolution = conflict_resolver.resolve_conflict(
+            column=column,
+            chosen_category=chosen_category,
+            chosen_transformation=chosen_transformation,
+            user_note=user_note
+        )
+        
+        return JSONResponse({
+            "status": "conflict_resolved",
+            "resolution": resolution
+        })
+        
+    except Exception as e:
+        raise HTTPException(500, f"Failed to resolve conflict: {str(e)}")
+
+
+@router.post("/save-transform-config")
+async def save_transform_config(
+    file_id: str = Query(...),
+    body: dict = Body(...)
+):
+    """
+    Save accepted transformation decisions to a configuration file.
+    """
+    try:
+        decisions = body.get("decisions", [])
+        
+        config_manager = TransformConfigManager()
+        
+        # Add each decision
+        for decision in decisions:
+            config_manager.add_decision(
+                column=decision["column"],
+                transformation=decision["transformation"],
+                category=decision.get("category", "utility"),
+                params=decision.get("params", {}),
+                reason=decision.get("reason", ""),
+                metadata=decision.get("metadata", {})
+            )
+        
+        # Save to file
+        config_path = config_manager.save_config(file_id)
+        
+        return JSONResponse({
+            "status": "saved",
+            "config_path": config_path,
+            "total_decisions": len(decisions),
+            "config": config_manager.export_config()
+        })
+        
+    except Exception as e:
+        raise HTTPException(500, f"Failed to save config: {str(e)}")
+
+
+@router.get("/load-transform-config")
+async def load_transform_config(
+    file_id: str = Query(...),
+    config_path: str = Query(None)
+):
+    """
+    Load a previously saved transformation configuration.
+    """
+    try:
+        config_manager = TransformConfigManager()
+        
+        if config_path:
+            success = config_manager.load_config(config_path)
+        else:
+            # Look for most recent config for this file_id
+            import glob
+            config_dir = config_manager.config_dir
+            pattern = f"transform_config_{file_id}_*.json"
+            matches = sorted(glob.glob(str(config_dir / pattern)), reverse=True)
+            
+            if not matches:
+                raise HTTPException(404, f"No configuration found for file_id: {file_id}")
+            
+            success = config_manager.load_config(matches[0])
+        
+        if not success:
+            raise HTTPException(500, "Failed to load configuration")
+        
+        return JSONResponse({
+            "status": "loaded",
+            "config": config_manager.export_config()
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Failed to load config: {str(e)}")
+
+
+@router.get("/list-transform-configs")
+async def list_transform_configs(
+    file_id: str = Query(None)
+):
+    """
+    List all saved transformation configurations, optionally filtered by file_id.
+    Returns list with filenames, timestamps, and metadata.
+    """
+    try:
+        import glob
+        import os
+        from datetime import datetime
+        
+        config_manager = TransformConfigManager()
+        config_dir = config_manager.config_dir
+        
+        # Build pattern
+        if file_id:
+            pattern = f"transform_config_{file_id}_*.json"
+        else:
+            pattern = "transform_config_*.json"
+        
+        matches = glob.glob(str(config_dir / pattern))
+        
+        configs = []
+        for filepath in matches:
+            try:
+                # Extract info from filename
+                filename = os.path.basename(filepath)
+                
+                # Get file stats
+                stat = os.stat(filepath)
+                created_time = datetime.fromtimestamp(stat.st_ctime)
+                modified_time = datetime.fromtimestamp(stat.st_mtime)
+                file_size = stat.st_size
+                
+                # Try to load and get decision count
+                temp_manager = TransformConfigManager()
+                if temp_manager.load_config(filepath):
+                    # TransformConfigManager stores accepted transforms in 'accepted_transforms'
+                    decision_count = len(getattr(temp_manager, 'accepted_transforms', []))
+                else:
+                    decision_count = 0
+                
+                configs.append({
+                    "filepath": filepath,
+                    "filename": filename,
+                    "created_at": created_time.isoformat(),
+                    "modified_at": modified_time.isoformat(),
+                    "file_size_bytes": file_size,
+                    "decision_count": decision_count
+                })
+            except Exception as e:
+                logger.warning(f"Error processing config file {filepath}: {e}")
+                continue
+        
+        # Sort by modified time (newest first)
+        configs.sort(key=lambda x: x["modified_at"], reverse=True)
+        
+        return JSONResponse({
+            "status": "success",
+            "total_configs": len(configs),
+            "configs": configs
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to list configs: {e}")
+        raise HTTPException(500, f"Failed to list configs: {str(e)}")
+
+
+@router.post("/get-transform-code")
+async def get_transform_code(
+    file_id: str = Query(...),
+    body: dict = Body(...)
+):
+    """
+    Generate Python code for applying accepted transformations.
+    """
+    try:
+        suggestion = body.get("suggestion", {})
+        category = suggestion.get("category", "utility")
+        
+        df = load_df_by_file_id(file_id)
+        
+        if category == "utility":
+            suggester = UtilitySuggester(df)
+            code = suggester.get_transform_code(suggestion)
+        elif category == "privacy":
+            suggester = PrivacySuggester(df)
+            code = suggester.get_transform_code(suggestion)
+        else:
+            raise HTTPException(400, f"Unknown category: {category}")
+        
+        return JSONResponse({
+            "code": code,
+            "column": suggestion.get("column"),
+            "transformation": suggestion.get("transformation")
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Failed to generate code: {str(e)}")
+
+
+@router.post("/apply-transform-config")
+async def apply_transform_config(
+    file_id: str = Query(...),
+    dry_run: bool = Query(False, description="If true, preview only without persisting"),
+    body: dict = Body(...)
+):
+    """
+    Apply accepted transformation decisions to the dataset in-memory.
+    Returns transformed data summary and preview.
+    
+    Args:
+        file_id: Dataset identifier
+        dry_run: If True, preview transformations without saving or persisting config
+        body: JSON with decisions array
+    """
+    try:
+        decisions = body.get("decisions", [])
+        
+        if not decisions:
+            return JSONResponse({
+                "status": "no_op",
+                "message": "No decisions to apply",
+                "applied_count": 0,
+                "dry_run": dry_run
+            })
+        
+        # Load the original dataframe
+        df = load_df_by_file_id(file_id)
+        df_transformed = df.copy()
+        
+        applied_actions = []
+        skipped_actions = []
+        
+        # Apply each decision
+        for decision in decisions:
+            column = decision.get("column")
+            transformation = decision.get("transformation")
+            params = decision.get("params", {})
+            
+            # Validate column exists
+            if column not in df_transformed.columns:
+                skipped_actions.append({
+                    "column": column,
+                    "transformation": transformation,
+                    "reason": "Column not found in dataset"
+                })
+                continue
+            
+            # Validate dtype for numeric transformations
+            numeric_transforms = [
+                "log_transform", "sqrt_transform", "power_transform",
+                "standard_scaler", "robust_scaler", "minmax_scaler"
+            ]
+            
+            if transformation in numeric_transforms:
+                if not pd.api.types.is_numeric_dtype(df_transformed[column]):
+                    skipped_actions.append({
+                        "column": column,
+                        "transformation": transformation,
+                        "reason": "Column is not numeric"
+                    })
+                    continue
+                
+                # Check for negative values in log/sqrt transforms
+                if transformation in ["log_transform", "sqrt_transform"]:
+                    if (df_transformed[column] < 0).any():
+                        skipped_actions.append({
+                            "column": column,
+                            "transformation": transformation,
+                            "reason": "Column contains negative values"
+                        })
+                        continue
+            
+            # Build feedback dict
+            feedback_dict = {
+                "column": column,
+                "action": transformation,
+                **params
+            }
+            
+            try:
+                # Create a feedback engine instance with current df and single feedback
+                feedback_engine = EDAFeedbackEngine(df_transformed, [feedback_dict])
+                df_transformed = feedback_engine.apply_feedback()
+                applied_actions.append({
+                    "column": column,
+                    "transformation": transformation,
+                    "category": decision.get("category", "unknown")
+                })
+            except Exception as e:
+                skipped_actions.append({
+                    "column": column,
+                    "transformation": transformation,
+                    "reason": f"Error during application: {str(e)}"
+                })
+        
+        # Generate summary
+        summary = {
+            "total_decisions": len(decisions),
+            "applied_count": len(applied_actions),
+            "skipped_count": len(skipped_actions),
+            "columns_modified": list(set([a["column"] for a in applied_actions])),
+            "applied_actions": applied_actions,
+            "skipped_actions": skipped_actions,
+            "dry_run": dry_run
+        }
+        
+        # Generate preview (first 10 rows of modified columns)
+        modified_columns = summary["columns_modified"]
+        if modified_columns:
+            preview_df = df_transformed[modified_columns].head(10)
+            summary["preview"] = preview_df.to_dict(orient="records")
+        else:
+            summary["preview"] = []
+        
+        # Save transformed data only if NOT dry run
+        if not dry_run:
+            # Optionally save transformed data
+            # df_transformed.to_csv(os.path.join(UPLOAD_DIR, f"{file_id}_transformed.csv"), index=False)
+            logger.info(f"Transformations applied (not saved to disk): {len(applied_actions)} actions")
+        else:
+            logger.info(f"DRY RUN: Previewed {len(applied_actions)} transformations without persisting")
+            summary["message"] = "Dry run mode: Transformations previewed only, not persisted"
+        
+
+        return JSONResponse({
+            "status": "applied",
+            "summary": summary
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Apply transform config failed: {e}")
+        raise HTTPException(500, f"Failed to apply transformations: {str(e)}")
+
+
+def _apply_row_sampling(df: pd.DataFrame, method: str, sample_size: int, seed: int = 42) -> pd.DataFrame:
+    """
+    Apply row sampling to dataframe based on specified method.
+    
+    Args:
+        df: Input dataframe
+        method: Sampling method - 'first', 'random', or 'stratified'
+        sample_size: Number of rows to sample
+        seed: Random seed for reproducibility
+        
+    Returns:
+        Sampled dataframe
+    """
+    if sample_size <= 0 or sample_size >= len(df):
+        return df
+    
+    if method == "first":
+        return df.head(sample_size)
+    
+    elif method == "random":
+        return df.sample(n=sample_size, random_state=seed)
+    
+    elif method == "stratified":
+        # Try to find a column suitable for stratification
+        # Use the first categorical or low-cardinality numeric column
+        strat_col = None
+        
+        for col in df.columns:
+            if df[col].dtype == 'object' or df[col].dtype.name == 'category':
+                unique_count = df[col].nunique()
+                if 2 <= unique_count <= 20:  # Reasonable number of strata
+                    strat_col = col
+                    break
+            elif df[col].dtype in ['int64', 'int32']:
+                unique_count = df[col].nunique()
+                if 2 <= unique_count <= 20:
+                    strat_col = col
+                    break
+        
+        if strat_col:
+            try:
+                # Stratified sampling
+                from sklearn.model_selection import train_test_split
+                sampled, _ = train_test_split(
+                    df,
+                    train_size=sample_size,
+                    stratify=df[strat_col],
+                    random_state=seed
+                )
+                return sampled
+            except Exception:
+                # Fall back to random if stratified fails
+                logger.warning(f"Stratified sampling failed, using random sampling instead")
+                return df.sample(n=sample_size, random_state=seed)
+        else:
+            # No suitable column for stratification, use random
+            logger.info("No suitable column for stratification, using random sampling")
+            return df.sample(n=sample_size, random_state=seed)
+    
+    else:
+        # Default to random
+        return df.sample(n=sample_size, random_state=seed)
+
+
+@router.post("/get-transform-comparisons")
+async def get_transform_comparisons(
+    file_id: str = Query(...),
+    body: dict = Body(...)
+):
+    """
+    Get before/after metric comparisons and visualizations for accepted transformations.
+    Returns metrics deltas and plot data for display in Smart Preview.
+    
+    Supports optional sampling parameters:
+    - row_sampling_method: 'first', 'random', or 'stratified'
+    - row_sample_size: Number of rows to sample (0 = no sampling)
+    - column_filter: 'all' or 'transformed_only'
+    - sampling_seed: Random seed for reproducibility (default: 42)
+    """
+    try:
+        decisions = body.get("decisions", [])
+        
+        # Sampling parameters
+        row_sampling_method = body.get("row_sampling_method", "random")
+        row_sample_size = body.get("row_sample_size", 0)  # 0 = no sampling
+        column_filter = body.get("column_filter", "all")
+        sampling_seed = body.get("sampling_seed", 42)
+        
+        if not decisions:
+            return JSONResponse({
+                "comparisons": [],
+                "message": "No transformation decisions provided"
+            })
+        
+        # Load the data
+        file_path = os.path.join(UPLOAD_DIR, f"{file_id}.csv")
+        if not os.path.exists(file_path):
+            raise HTTPException(404, f"File not found: {file_id}")
+        
+        df = pd.read_csv(file_path)
+        original_row_count = len(df)
+        
+        # Apply row sampling if requested
+        if row_sample_size > 0 and row_sample_size < len(df):
+            df = _apply_row_sampling(df, row_sampling_method, row_sample_size, sampling_seed)
+            logger.info(f"Applied {row_sampling_method} sampling: {len(df)}/{original_row_count} rows")
+        
+        # Convert decisions to feedback format
+        feedback = []
+        transformed_columns = set()
+        
+        for decision in decisions:
+            transformation = decision.get("transformation")
+            column = decision.get("column")
+            params = decision.get("params", {})
+            
+            transformed_columns.add(column)
+            
+            feedback.append({
+                "action": transformation,
+                "column": column,
+                "params": params
+            })
+        
+        # Apply column filter if requested
+        if column_filter == "transformed_only":
+            # Keep only transformed columns + index columns
+            columns_to_keep = list(transformed_columns)
+            # Add any columns that might be needed for stratification or context
+            existing_cols = [col for col in columns_to_keep if col in df.columns]
+            if existing_cols:
+                df = df[existing_cols]
+                logger.info(f"Filtered to {len(df.columns)} transformed columns")
+        
+        # Apply transformations using EDAFeedbackEngine
+        engine = EDAFeedbackEngine(df, feedback)
+        engine.apply_feedback()
+        
+        # Get comparisons
+        comparisons = engine.get_transform_comparisons()
+        
+        # Add sampling info to response
+        sampling_info = {
+            "original_rows": original_row_count,
+            "sampled_rows": len(df),
+            "sampling_method": row_sampling_method if row_sample_size > 0 else "none",
+            "sampling_applied": row_sample_size > 0 and row_sample_size < original_row_count,
+            "column_filter": column_filter,
+            "sampling_seed": sampling_seed
+        }
+        
+        return JSONResponse({
+            "comparisons": comparisons,
+            "total_comparisons": len(comparisons),
+            "file_id": file_id,
+            "sampling_info": sampling_info
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get transform comparisons failed: {e}")
+        raise HTTPException(500, f"Failed to generate comparisons: {str(e)}")
+
+
+@router.post("/rollback-transforms")
+async def rollback_transforms(
+    file_id: str = Query(...),
+    body: dict = Body(default={})
+):
+    """
+    Rollback all transformations and reset to original dataset state.
+    Clears accepted decisions and transformation configs.
+    
+    Args:
+        file_id: Dataset identifier
+        body: Optional JSON with confirmation flag
+        
+    Returns:
+        Status of rollback operation
+    """
+    try:
+        # Check if file exists
+        file_path = os.path.join(UPLOAD_DIR, f"{file_id}.csv")
+        if not os.path.exists(file_path):
+            raise HTTPException(404, f"File not found: {file_id}")
+        
+        # Optional: Require explicit confirmation
+        confirmed = body.get("confirmed", True)
+        if not confirmed:
+            return JSONResponse({
+                "status": "confirmation_required",
+                "message": "Rollback requires confirmation. Set 'confirmed': true in request body."
+            })
+        
+        # Clear any saved transformation configs for this file
+        config_manager = TransformConfigManager()
+        config_dir = config_manager.config_dir
+        
+        # Find and optionally remove config files for this file_id
+        import glob
+        pattern = f"transform_config_{file_id}_*.json"
+        config_files = glob.glob(str(config_dir / pattern))
+        
+        removed_configs = []
+        if config_files:
+            # Option 1: Archive configs instead of deleting
+            archive_dir = config_dir / "archived"
+            archive_dir.mkdir(exist_ok=True)
+            
+            for config_file in config_files:
+                # Move to archive
+                import shutil
+                filename = os.path.basename(config_file)
+                archive_path = archive_dir / filename
+                shutil.move(config_file, archive_path)
+                removed_configs.append(filename)
+                logger.info(f"Archived config: {filename}")
+        
+        # Reset to original data (file already exists, no action needed)
+        # If transformations were saved to a separate file, could restore here
+        
+        return JSONResponse({
+            "status": "rollback_complete",
+            "message": "All transformations rolled back. Dataset reset to original state.",
+            "file_id": file_id,
+            "archived_configs": removed_configs,
+            "archived_count": len(removed_configs)
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Rollback failed for {file_id}: {e}")
+        raise HTTPException(500, f"Failed to rollback transformations: {str(e)}")
+
+
+@router.post("/get-pet-mapping")
+async def get_pet_mapping(
+    file_id: str = Query(...),
+    body: dict = Body(...)
+):
+    """
+    Generate Privacy-Enhanced Technology (PET) mapping grid.
+    Shows privacy risks and applied protections per column.
+    
+    Args:
+        file_id: Dataset identifier
+        body: Contains accepted_decisions list
+        
+    Returns:
+        PET mapping data with risk levels, suggestions, and protection status
+    """
+    try:
+        decisions = body.get("decisions", [])
+        
+        # Load the data
+        file_path = os.path.join(UPLOAD_DIR, f"{file_id}.csv")
+        if not os.path.exists(file_path):
+            raise HTTPException(404, f"File not found: {file_id}")
+        
+        df = pd.read_csv(file_path)
+        
+        # Run privacy analysis
+        pii_report = None
+        k_anonymity_report = None
+        
+        try:
+            pii_scanner = PIIScanner(df)
+            pii_report = pii_scanner.run_fast_scan()
+        except Exception as e:
+            logger.warning(f"PII scan failed: {e}")
+        
+        try:
+            k_analyzer = KAnonymityAnalyzer(df)
+            potential_qis = k_analyzer.detect_potential_quasi_identifiers()
+            k_anonymity_report = {"potential_qis": potential_qis}
+        except Exception as e:
+            logger.warning(f"K-anonymity analysis failed: {e}")
+        
+        # Get privacy suggestions
+        privacy_suggester = PrivacySuggester(df, pii_report=pii_report, k_anonymity_report=k_anonymity_report)
+        privacy_suggestions = privacy_suggester.suggest_privacy_transforms()
+        
+        # Build PET mapping
+        pet_mapping = []
+        
+        # Track which columns have risks and protections
+        column_risks = {}  # column -> {risk_level, pii_types, is_qi, suggestions}
+        column_protections = {}  # column -> {transformation, accepted}
+        
+        # Process PII detections
+        if pii_report and "detections" in pii_report:
+            for detection in pii_report["detections"]:
+                col = detection.get("column")
+                if col:
+                    pii_types = detection.get("pii_types", [])
+                    confidence = detection.get("confidence", 0.0)
+                    
+                    # Determine risk level based on PII type
+                    direct_ids = ["EMAIL", "SSN", "PHONE", "CREDIT_CARD", "PHONE_US", "IP_ADDRESS"]
+                    if any(p in direct_ids for p in pii_types):
+                        risk_level = "Direct Identifier"
+                    else:
+                        risk_level = "Sensitive"
+                    
+                    column_risks[col] = {
+                        "risk_level": risk_level,
+                        "pii_types": pii_types,
+                        "is_qi": False,
+                        "confidence": confidence
+                    }
+        
+        # Process quasi-identifiers
+        if k_anonymity_report and "potential_qis" in k_anonymity_report:
+            for qi_info in k_anonymity_report["potential_qis"]:
+                col = qi_info.get("column")
+                if col:
+                    if col in column_risks:
+                        # Already marked as PII, update to QI if applicable
+                        column_risks[col]["is_qi"] = True
+                    else:
+                        column_risks[col] = {
+                            "risk_level": "Quasi-Identifier",
+                            "pii_types": [],
+                            "is_qi": True,
+                            "confidence": qi_info.get("uniqueness", 0.0)
+                        }
+        
+        # Process accepted privacy transformations
+        # Use centralized PET_TYPES and helper to normalize/validate transformations
+        for decision in decisions:
+            col = decision.get("column")
+            transformation = decision.get("transformation")
+            if not col or not transformation:
+                continue
+
+            # Normalize and validate transformation name
+            t_norm = transformation.strip().lower() if isinstance(transformation, str) else None
+            if not is_pet(t_norm):
+                # Not a recognised privacy transformation - ignore
+                continue
+
+            column_protections[col] = {
+                "transformation": t_norm,
+                "accepted": True,
+                "params": decision.get("params", {})
+            }
+        
+        # Map suggestions to columns
+        suggested_pets = {}  # column -> [suggestions]
+        for suggestion in privacy_suggestions:
+            col = suggestion.get("column")
+            if col:
+                if col not in suggested_pets:
+                    suggested_pets[col] = []
+                suggested_pets[col].append(suggestion)
+        
+        # Build final mapping for each column
+        for col in df.columns:
+            risk_info = column_risks.get(col, {})
+            protection_info = column_protections.get(col)
+            suggestions = suggested_pets.get(col, [])
+            
+            # Determine protection status
+            if not risk_info:
+                # No risk detected
+                protection_status = "none_needed"
+                status_icon = "✅"
+                status_text = "No Privacy Risk"
+            elif protection_info:
+                # Has protection applied
+                protection_status = "protected"
+                status_icon = "✅"
+                status_text = "Protected"
+            elif suggestions:
+                # Has risk but not protected
+                protection_status = "unprotected"
+                status_icon = "❌"
+                status_text = "Unprotected"
+            else:
+                # Has risk but no suggestions available
+                protection_status = "needs_review"
+                status_icon = "⚠️"
+                status_text = "Needs Review"
+            
+            # Get suggested PET
+            suggested_pet = None
+            if suggestions:
+                # Get highest priority suggestion
+                priority_order = ["hash", "mask", "generalize", "suppress", "redact"]
+                for pet in priority_order:
+                    for sug in suggestions:
+                        if sug.get("transformation") == pet:
+                            suggested_pet = sug
+                            break
+                    if suggested_pet:
+                        break
+                
+                if not suggested_pet:
+                    suggested_pet = suggestions[0]
+            
+            mapping = {
+                "column": col,
+                "risk_level": risk_info.get("risk_level", "None"),
+                "pii_types": risk_info.get("pii_types", []),
+                "is_quasi_identifier": risk_info.get("is_qi", False),
+                "confidence": risk_info.get("confidence", 0.0),
+                "suggested_pet": suggested_pet.get("transformation") if suggested_pet else None,
+                "suggestion_reason": suggested_pet.get("reason") if suggested_pet else None,
+                "applied_pet": protection_info.get("transformation") if protection_info else None,
+                "is_protected": protection_info is not None,
+                "protection_status": protection_status,
+                "status_icon": status_icon,
+                "status_text": status_text
+            }
+            
+            pet_mapping.append(mapping)
+        
+        # Calculate summary statistics
+        total_columns = len(pet_mapping)
+        risk_columns = len([m for m in pet_mapping if m["risk_level"] != "None"])
+        protected_columns = len([m for m in pet_mapping if m["is_protected"]])
+        unprotected_high_risk = len([
+            m for m in pet_mapping 
+            if m["risk_level"] == "Direct Identifier" and not m["is_protected"]
+        ])
+        
+        summary = {
+            "total_columns": total_columns,
+            "risk_columns": risk_columns,
+            "protected_columns": protected_columns,
+            "unprotected_columns": risk_columns - protected_columns,
+            "unprotected_high_risk": unprotected_high_risk,
+            "protection_rate": (protected_columns / risk_columns * 100) if risk_columns > 0 else 100.0
+        }
+        
+        return JSONResponse({
+            "pet_mapping": pet_mapping,
+            "summary": summary,
+            "file_id": file_id
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"PET mapping failed for {file_id}: {e}")
+        raise HTTPException(500, f"Failed to generate PET mapping: {str(e)}")
+
+
+@router.post("/get-transform-batch-code")
+async def get_transform_batch_code(
+    file_id: str = Query(...),
+    body: dict = Body(...)
+):
+    """
+    Generate combined Python code for a batch of accepted transformations.
+    Returns an ordered, executable Python snippet.
+    """
+    try:
+        decisions = body.get("decisions", [])
+        
+        if not decisions:
+            return JSONResponse({
+                "code": "# No transformations to apply",
+                "total_decisions": 0
+            })
+        
+        df = load_df_by_file_id(file_id)
+        
+        code_lines = [
+            "import pandas as pd",
+            "import numpy as np",
+            "from sklearn.preprocessing import StandardScaler, RobustScaler, MinMaxScaler",
+            "from scipy.stats import yeojohnson",
+            "import hashlib",
+            "",
+            "# Load your dataframe",
+            "# df = pd.read_csv('your_data.csv')",
+            "",
+            "# Apply transformations",
+            ""
+        ]
+        
+        for i, decision in enumerate(decisions, 1):
+            column = decision.get("column")
+            transformation = decision.get("transformation")
+            category = decision.get("category", "utility")
+            
+            code_lines.append(f"# {i}. {category.capitalize()}: {transformation} on '{column}'")
+            
+            # Get code for this transformation
+            suggestion = {
+                "column": column,
+                "transformation": transformation,
+                "category": category,
+                **decision.get("params", {})
+            }
+            
+            try:
+                if category == "utility":
+                    suggester = UtilitySuggester(df)
+                    code = suggester.get_transform_code(suggestion)
+                elif category == "privacy":
+                    suggester = PrivacySuggester(df)
+                    code = suggester.get_transform_code(suggestion)
+                else:
+                    code = f"# Unknown category: {category}"
+                
+                code_lines.append(code)
+                code_lines.append("")
+                
+            except Exception as e:
+                code_lines.append(f"# Error generating code: {str(e)}")
+                code_lines.append("")
+        
+        code_lines.append("# Transformations complete")
+        code_lines.append("print(f'Applied {0} transformations')".replace("{0}", str(len(decisions))))
+        
+        combined_code = "\n".join(code_lines)
+        
+        return JSONResponse({
+            "code": combined_code,
+            "total_decisions": len(decisions),
+            "status": "generated"
+        })
+        
+    except Exception as e:
+        logger.error(f"Batch code generation failed: {e}")
+        raise HTTPException(500, f"Failed to generate batch code: {str(e)}")
+
 
 @router.post("/apply-features")
 async def apply_features(
@@ -904,6 +2162,165 @@ async def compute_mi_matrix_endpoint(
     except Exception as e:
         logger.error(f"Error computing MI matrix: {str(e)}", exc_info=True)
         raise HTTPException(500, f"MI matrix computation failed: {str(e)}")
+
+
+# ============================================================================
+# TIME-SERIES ANALYSIS ENDPOINTS
+# ============================================================================
+
+@router.post("/detect-timeseries/{file_id}")
+async def detect_timeseries_endpoint(file_id: str):
+    """
+    Detect if uploaded dataset is time-series and identify temporal characteristics.
+    
+    Args:
+        file_id: CSV file identifier
+    
+    Returns:
+        Time-series detection results with datetime columns, frequency, and confidence
+    """
+    try:
+        df = load_df_by_file_id(file_id)
+        logger.info(f"Detecting time-series characteristics for file {file_id}")
+        
+        detector = TimeSeriesDetector(df)
+        results = detector.detect_timeseries()
+        
+        # Save detection results
+        if results.get('is_timeseries'):
+            analyzer = TimeSeriesAnalyzer(df, results['primary_datetime_column'])
+            analyzer.save_results(file_id, 'detection', results)
+        
+        return {
+            "detection": _sanitize_value_for_json(results),
+            "file_id": file_id
+        }
+    
+    except TimeSeriesError as e:
+        logger.error(f"Time-series detection error: {str(e)}")
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        logger.error(f"Error in time-series detection: {str(e)}", exc_info=True)
+        raise HTTPException(500, f"Time-series detection failed: {str(e)}")
+
+
+@router.post("/timeseries-acf-pacf")
+async def compute_timeseries_acf_pacf(
+    file_id: str = Body(...),
+    datetime_col: str = Body(...),
+    target_col: str = Body(...),
+    lags: int = Body(40)
+):
+    """
+    Compute ACF and PACF for time-series diagnostics.
+    
+    Args:
+        file_id: CSV file identifier
+        datetime_col: Name of datetime column
+        target_col: Target column to analyze
+        lags: Number of lags to compute (default 40)
+    
+    Returns:
+        ACF/PACF values, confidence intervals, and AR/MA order suggestions
+    """
+    try:
+        df = load_df_by_file_id(file_id)
+        logger.info(f"Computing ACF/PACF for {target_col} in file {file_id}")
+        logger.info(f"DataFrame shape: {df.shape}, columns: {list(df.columns)}")
+        
+        analyzer = TimeSeriesAnalyzer(df, datetime_col)
+        logger.info(f"After TimeSeriesAnalyzer init, columns: {list(analyzer.df.columns)}")
+        
+        results = analyzer.compute_acf_pacf(target_col, lags)
+        
+        # Save results
+        analyzer.save_results(file_id, f'acf_pacf_{target_col}', results)
+        
+        return {
+            "acf_pacf": _sanitize_value_for_json(results),
+            "target_column": target_col,
+            "file_id": file_id
+        }
+    
+    except TimeSeriesError as e:
+        logger.error(f"ACF/PACF computation error: {str(e)}")
+        raise HTTPException(400, str(e))
+    except ImportError:
+        raise HTTPException(
+            400,
+            "Time-series analysis requires statsmodels library. "
+            "Install with: pip install statsmodels"
+        )
+    except Exception as e:
+        logger.error(f"Error computing ACF/PACF: {str(e)}", exc_info=True)
+        raise HTTPException(500, f"ACF/PACF computation failed: {str(e)}")
+
+
+@router.post("/timeseries-decompose")
+async def decompose_timeseries_endpoint(
+    file_id: str = Body(...),
+    datetime_col: str = Body(...),
+    target_col: str = Body(...),
+    model: str = Body('additive'),
+    period: int = Body(None),
+    resample_freq: str = Body(None),
+    aggregation: str = Body('mean')
+):
+    """
+    Perform seasonal decomposition (STL) on time-series data.
+    
+    Args:
+        file_id: CSV file identifier
+        datetime_col: Name of datetime column
+        target_col: Target column to decompose
+        model: 'additive' or 'multiplicative' (default 'additive')
+        period: Seasonal period (auto-detected if None)
+        resample_freq: Frequency to resample irregular series (e.g., 'D', 'H')
+        aggregation: Aggregation method for resampling ('mean', 'sum', 'median')
+    
+    Returns:
+        Decomposed components: observed, trend, seasonal, residual
+    """
+    try:
+        df = load_df_by_file_id(file_id)
+        logger.info(f"Decomposing time-series {target_col} in file {file_id}")
+        
+        if model not in ['additive', 'multiplicative']:
+            raise HTTPException(400, "Model must be 'additive' or 'multiplicative'")
+        
+        if aggregation not in ['mean', 'sum', 'median', 'first', 'last']:
+            raise HTTPException(400, "Aggregation must be one of: mean, sum, median, first, last")
+        
+        analyzer = TimeSeriesAnalyzer(df, datetime_col)
+        results = analyzer.decompose_series(
+            target_col, 
+            model, 
+            period,
+            resample_freq,
+            aggregation
+        )
+        
+        # Save results
+        analyzer.save_results(file_id, f'decomposition_{target_col}', results)
+        
+        return {
+            "decomposition": _sanitize_value_for_json(results),
+            "target_column": target_col,
+            "file_id": file_id
+        }
+    
+    except TimeSeriesError as e:
+        logger.error(f"Decomposition error: {str(e)}")
+        raise HTTPException(400, str(e))
+    except ImportError:
+        raise HTTPException(
+            400,
+            "Time-series decomposition requires statsmodels library. "
+            "Install with: pip install statsmodels"
+        )
+    except Exception as e:
+        logger.error(f"Error in decomposition: {str(e)}", exc_info=True)
+        raise HTTPException(500, f"Decomposition failed: {str(e)}")
 
 
 # ============================================================================

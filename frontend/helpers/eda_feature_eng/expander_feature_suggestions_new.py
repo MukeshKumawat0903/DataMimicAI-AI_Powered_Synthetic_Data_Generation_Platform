@@ -90,45 +90,9 @@ def _render_suggestion_table(suggestions: List[Dict], category: str, show_accept
     
     st.markdown(f"#### {category.capitalize()} Transformations")
     
-    # Add filters
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        # Column filter
-        all_columns = sorted(set([sug["column"] for sug in suggestions]))
-        selected_column = st.selectbox(
-            "Filter by Column:",
-            options=["All Columns"] + all_columns,
-            key=f"filter_column_{category}",
-            index=0
-        )
-    
-    with col2:
-        # Transformation type filter
-        all_transforms = sorted(set([sug["transformation"] for sug in suggestions]))
-        selected_transform = st.selectbox(
-            "Filter by Transform:",
-            options=["All Transforms"] + all_transforms,
-            key=f"filter_transform_{category}",
-            index=0
-        )
-    
-    # Apply filters
-    filtered_suggestions = suggestions
-    if selected_column != "All Columns":
-        filtered_suggestions = [s for s in filtered_suggestions if s["column"] == selected_column]
-    if selected_transform != "All Transforms":
-        filtered_suggestions = [s for s in filtered_suggestions if s["transformation"] == selected_transform]
-    
-    if not filtered_suggestions:
-        st.warning("No suggestions match the selected filters.")
-        return
-    
-    st.caption(f"Showing {len(filtered_suggestions)} of {len(suggestions)} suggestions")
-    
     # Create DataFrame for display
     display_data = []
-    for idx, sug in enumerate(filtered_suggestions):
+    for idx, sug in enumerate(suggestions):
         display_data.append({
             "Column": sug["column"],
             "Transformation": sug["transformation"],
@@ -149,14 +113,14 @@ def _render_suggestion_table(suggestions: List[Dict], category: str, show_accept
     # Accept buttons
     if show_accept:
         st.markdown("**Accept Suggestions:**")
-        cols = st.columns(min(len(filtered_suggestions), 4))
+        cols = st.columns(min(len(suggestions), 4))
         
-        for idx, sug in enumerate(filtered_suggestions):
+        for idx, sug in enumerate(suggestions):
             col_idx = idx % len(cols)
             with cols[col_idx]:
                 if st.button(
                     f"✓ {sug['column']}",
-                    key=f"accept_{category}_{sug['column']}_{idx}_{sug['transformation']}",
+                    key=f"accept_{category}_{sug['column']}_{idx}",
                     help=f"Accept {sug['transformation']} for {sug['column']}"
                 ):
                     _accept_suggestion(sug, category)
@@ -213,42 +177,46 @@ def _display_conflicts(conflicts: List[Dict]):
             # Show recommendation
             st.info(conflict['recommendation'])
             
-            # Decision using radio button (more intuitive for single choice)
+            # Decision buttons
             st.markdown("**Make Your Decision:**")
+            col1, col2, col3 = st.columns(3)
             
-            decision_choice = st.radio(
-                "Choose one transformation to apply:",
-                options=[
-                    f"📊 Utility: {conflict['utility_transform']}",
-                    f"🔒 Privacy: {conflict['privacy_transform']}",
-                    "⏭️ Skip Both"
-                ],
-                key=f"radio_conflict_{column}",
-                label_visibility="collapsed"
-            )
-            
-            # Apply decision button
-            if st.button(
-                "✅ Confirm Decision",
-                key=f"confirm_conflict_{column}",
-                type="primary",
-                use_container_width=True
-            ):
-                if "Utility" in decision_choice:
+            with col1:
+                if st.button(
+                    "Accept Utility",
+                    key=f"conflict_utility_{column}",
+                    type="secondary",
+                    use_container_width=True
+                ):
                     _resolve_conflict(
                         column,
                         conflict['utility_suggestion'],
                         "utility",
                         conflict
                     )
-                elif "Privacy" in decision_choice:
+                    st.rerun()
+            
+            with col2:
+                if st.button(
+                    "Accept Privacy",
+                    key=f"conflict_privacy_{column}",
+                    type="primary" if severity == "high" else "secondary",
+                    use_container_width=True
+                ):
                     _resolve_conflict(
                         column,
                         conflict['privacy_suggestion'],
                         "privacy",
                         conflict
                     )
-                else:  # Skip
+                    st.rerun()
+            
+            with col3:
+                if st.button(
+                    "Skip Both",
+                    key=f"conflict_skip_{column}",
+                    use_container_width=True
+                ):
                     st.session_state.resolved_conflicts[column] = "skipped"
                     st.rerun()
 
@@ -287,38 +255,6 @@ def _resolve_conflict(column: str, suggestion: Dict, chosen_category: str, confl
     }
     
     st.session_state.accepted_decisions.append(decision)
-    
-    # Log conflict resolution to backend
-    _log_conflict_resolution(
-        st.session_state.file_id,
-        column,
-        chosen_category,
-        suggestion["transformation"],
-        f"Resolved {conflict.get('severity', 'unknown')} priority conflict"
-    )
-
-
-def _log_conflict_resolution(file_id: str, column: str, chosen_category: str, chosen_transformation: str, user_note: str = None):
-    """Log conflict resolution decision to backend."""
-    try:
-        response = requests.post(
-            f"{API_BASE}/eda/resolve-conflict",
-            params={
-                "file_id": file_id,
-                "column": column,
-                "chosen_category": chosen_category,
-                "chosen_transformation": chosen_transformation,
-                "user_note": user_note
-            }
-        )
-        
-        if response.status_code != 200:
-            # Don't block the UI, just log silently
-            print(f"Warning: Failed to log conflict resolution: {response.text}")
-    
-    except Exception as e:
-        # Don't block the UI on logging errors
-        print(f"Warning: Error logging conflict resolution: {str(e)}")
 
 
 def _display_accepted_rules(file_id: str):
@@ -348,106 +284,21 @@ def _display_accepted_rules(file_id: str):
     
     # Action buttons
     st.markdown("---")
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
-        if st.button("⚡ Apply to Dataset", use_container_width=True, type="primary"):
-            _apply_transformations(file_id)
-    
-    with col2:
         if st.button("💾 Save Configuration", use_container_width=True):
             _save_config(file_id)
     
-    with col3:
-        if st.button("📥 Export JSON", use_container_width=True):
+    with col2:
+        if st.button("📥 Export as JSON", use_container_width=True):
             _export_config_json()
     
-    with col4:
+    with col3:
         if st.button("🗑️ Clear All", use_container_width=True, type="secondary"):
             st.session_state.accepted_decisions = []
             st.session_state.resolved_conflicts = {}
             st.rerun()
-    
-    # Add batch code generation button
-    st.markdown("---")
-    if st.button("🐍 Generate Python Code", use_container_width=True):
-        _generate_batch_code(file_id)
-
-
-def _apply_transformations(file_id: str):
-    """Apply accepted transformations to the dataset."""
-    try:
-        with st.spinner("Applying transformations to dataset..."):
-            response = requests.post(
-                f"{API_BASE}/eda/apply-transform-config",
-                params={"file_id": file_id},
-                json={"decisions": st.session_state.accepted_decisions}
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                summary = result.get("summary", {})
-                
-                st.success(f"✅ Applied {summary.get('applied_count', 0)} transformations successfully!")
-                
-                # Show summary
-                with st.expander("📊 Transformation Summary", expanded=True):
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Total Decisions", summary.get("total_decisions", 0))
-                    with col2:
-                        st.metric("Applied", summary.get("applied_count", 0))
-                    with col3:
-                        st.metric("Skipped", summary.get("skipped_count", 0))
-                    
-                    st.markdown("**Modified Columns:**")
-                    st.write(", ".join(f"`{col}`" for col in summary.get("columns_modified", [])))
-                    
-                    if summary.get("skipped_actions"):
-                        st.warning("⚠️ Some actions were skipped:")
-                        for skip in summary["skipped_actions"]:
-                            st.markdown(f"- `{skip['column']}` ({skip['transformation']}): {skip['reason']}")
-                    
-                    # Show preview
-                    if summary.get("preview"):
-                        st.markdown("**Preview of Modified Columns:**")
-                        st.dataframe(pd.DataFrame(summary["preview"]), use_container_width=True)
-            else:
-                st.error(f"❌ Failed to apply transformations: {response.text}")
-    
-    except Exception as e:
-        st.error(f"Error applying transformations: {str(e)}")
-
-
-def _generate_batch_code(file_id: str):
-    """Generate combined Python code for all accepted transformations."""
-    try:
-        with st.spinner("Generating Python code..."):
-            response = requests.post(
-                f"{API_BASE}/eda/get-transform-batch-code",
-                params={"file_id": file_id},
-                json={"decisions": st.session_state.accepted_decisions}
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                code = result.get("code", "")
-                
-                st.success(f"✅ Generated code for {result.get('total_decisions', 0)} transformations!")
-                
-                with st.expander("🐍 Python Code", expanded=True):
-                    st.code(code, language="python")
-                    st.download_button(
-                        label="📥 Download Python Script",
-                        data=code,
-                        file_name=f"transformations_{file_id}.py",
-                        mime="text/x-python"
-                    )
-            else:
-                st.error(f"❌ Failed to generate code: {response.text}")
-    
-    except Exception as e:
-        st.error(f"Error generating code: {str(e)}")
 
 
 def _save_config(file_id: str):
@@ -493,79 +344,6 @@ def _export_config_json():
     )
 
 
-def _render_load_config_ui(file_id: str):
-    """Render UI for loading saved configurations."""
-    try:
-        # Fetch available configs
-        response = requests.get(
-            f"{API_BASE}/eda/list-transform-configs",
-            params={"file_id": file_id}
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            configs = result.get("configs", [])
-            
-            if not configs:
-                st.info("No saved configurations found for this file.")
-                return
-            
-            st.caption(f"Found {len(configs)} saved configuration(s)")
-            
-            # Create selectbox with config options
-            config_options = {}
-            for cfg in configs:
-                label = f"{cfg['filename']} - {cfg['decision_count']} decisions - {cfg['modified_at'][:19]}"
-                config_options[label] = cfg['filepath']
-            
-            selected_label = st.selectbox(
-                "Select a configuration to load:",
-                options=list(config_options.keys()),
-                key="config_selector"
-            )
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if st.button("📥 Load Selected Config", use_container_width=True):
-                    _load_selected_config(config_options[selected_label])
-            
-            with col2:
-                # Show details of selected config
-                selected_cfg = next((c for c in configs if c['filepath'] == config_options[selected_label]), None)
-                if selected_cfg:
-                    st.metric("Decisions", selected_cfg['decision_count'])
-        else:
-            st.error(f"Failed to fetch configurations: {response.text}")
-    
-    except Exception as e:
-        st.error(f"Error loading configurations: {str(e)}")
-
-
-def _load_selected_config(config_path: str):
-    """Load a selected configuration and populate session state."""
-    try:
-        response = requests.get(
-            f"{API_BASE}/eda/load-transform-config",
-            params={"config_path": config_path}
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            config = result.get("config", {})
-            
-            # Populate session state with loaded decisions
-            st.session_state.accepted_decisions = config.get("transformations", [])
-            
-            st.success(f"✅ Loaded {len(st.session_state.accepted_decisions)} transformation decisions!")
-            st.rerun()
-        else:
-            st.error(f"Failed to load configuration: {response.text}")
-    
-    except Exception as e:
-        st.error(f"Error loading configuration: {str(e)}")
-
-
 def expander_feature_suggestions():
     """Main function for context-aware feature suggestions tab."""
     _initialize_session_state()
@@ -604,10 +382,6 @@ def expander_feature_suggestions():
             st.session_state.accepted_decisions = []
             st.session_state.resolved_conflicts = {}
             st.rerun()
-    
-    # Add section for loading saved configurations
-    with st.expander("📂 Load Saved Configuration"):
-        _render_load_config_ui(file_id)
     
     # Display results if available
     if st.session_state.suggestion_results:
