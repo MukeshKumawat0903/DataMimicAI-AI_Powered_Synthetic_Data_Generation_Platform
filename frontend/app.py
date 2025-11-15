@@ -312,7 +312,7 @@ def main():
 
     step = st.session_state.current_step
     step_names = [
-        "Data Exploration",  # Renamed from "EDA & Feature Eng."
+        "Explore & Configure",  # Renamed from "EDA & Feature Eng."
         "Generate Synthetic Data",  # Renamed from "Synthetic Data Generation"
         "Validate & Refine",  # Renamed from "Visualization"
         # "Roadmap"
@@ -362,11 +362,11 @@ def main():
             onboarding_tour()
             st.info("➡️ Switch to **Data Upload** to begin.")
 
-    # ---- Step 1: DATA EXPLORATION (Phase 2: Swapped with old Step 2) ----
+    # ---- Step 1: EXPLORE & CONFIGURE (Phase 2: Swapped with old Step 2) ----
     elif step == 1:
         st.markdown('<div id="custom-main-scroll">', unsafe_allow_html=True)
         sticky_section_header(
-            "Data Exploration",
+            "Explore & Configure",
             icon="🔍"
         )
         

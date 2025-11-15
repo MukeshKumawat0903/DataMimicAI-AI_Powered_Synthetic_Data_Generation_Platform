@@ -79,7 +79,7 @@ def show_smart_recommendations(step: int):
         },
         2: {
             "icon": "💡",
-            "tip": "Use insights from Step 1 (Data Exploration) to choose the right algorithm and parameters",
+            "tip": "Use insights from Step 1 (Explore & Configure) to choose the right algorithm and parameters",
             "action": None
         },
         3: {
@@ -97,7 +97,7 @@ def sidebar_stepper(current_step):
     """Display a sidebar stepper for navigation between steps, with modern look and strong highlight."""
     steps = [
         ("Data Upload", "📁", "upload"),
-        ("Data Exploration", "🔍", "exploration"),  # Renamed from "EDA & Feature Eng."
+        ("Explore & Configure", "🔍", "exploration"),  # Renamed from "EDA & Feature Eng."
         ("Generate Synthetic Data", "⚙️", "generation"),  # Renamed for clarity
         ("Validate & Refine", "✅", "validation"),  # Renamed from "Visualization"
         # ("Roadmap", "🧩", "roadmap"),
@@ -571,7 +571,7 @@ def onboarding_tour():
         ### 💡 Tips
         - Use the **sidebar stepper** to jump between steps anytime
         - The **sticky action bar** shows context‑aware actions with **inline previews**
-        - **Apply suggestions** stays in Data Exploration - preview changes inline before moving forward
+        - **Apply suggestions** stays in Explore & Configure - preview changes inline before moving forward
         - **Quick Actions** in the sidebar let you download original or synthetic data
         - Try **Demo Mode** for fast trials — no upload required
         """, unsafe_allow_html=True)
@@ -611,7 +611,7 @@ def show_feature_highlights():
         col1, col2 = st.columns(2)
         with col1:
             show_new_feature_badge("Inline Feature Preview")
-            st.write("Apply suggestions and preview changes without leaving Data Exploration")
+            st.write("Apply suggestions and preview changes without leaving Explore & Configure")
             
             st.markdown("---")
             show_new_feature_badge("Advanced AutoML Models")
