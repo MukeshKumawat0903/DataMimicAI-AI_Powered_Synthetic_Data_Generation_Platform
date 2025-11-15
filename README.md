@@ -89,7 +89,7 @@ With **DataMimicAI**, these benefits become instant, practical, and scalable.
 - Smart preview accelerates data readiness before deeper exploration
 - Built-in onboarding tour + jump buttons for fast navigation
 
-### 🔍 Step 1: Data Exploration (EDA & Feature Engineering)
+### 🔍 Step 1: Explore & Configure (EDA & Feature Engineering)
 
 - Modular tabs: 📄 Profiling | 💡 Feature Suggestions | 🔗 Correlation | ⚠️ Outliers & Drift | 🔁 Feedback Loop
 - **Profiling:** Structure, distributions, potential quality flags
