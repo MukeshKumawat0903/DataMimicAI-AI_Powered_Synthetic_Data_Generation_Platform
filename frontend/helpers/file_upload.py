@@ -50,6 +50,18 @@ def handle_demo_mode():
                         st.write(f"**Rows:** {data['num_rows']:,}")
                         st.write(f"**Columns ({len(data['columns'])}):**")
                         df = pd.DataFrame(data['sample_data'])
+                        st.session_state.uploaded_df = df
+                        st.session_state.df = df.copy()
+                        st.session_state.data_history = [df.copy()]
+                        st.session_state.features_applied = False
+                        st.session_state.last_changed_columns = []
+                        st.session_state.feature_preview_df = None
+                        st.session_state.feature_preview_message = None
+                        st.session_state.last_applied_summary = None
+                        st.session_state.quick_preview_visible = False
+                        st.session_state.quick_preview_df = None
+                        st.session_state.quick_preview_message = "Preview of EDA results."
+                        st.session_state.quick_preview_changed_cols = []
                         st.dataframe(
                             df,
                             column_config={
@@ -139,9 +151,31 @@ def handle_file_upload():
                         df = pd.read_csv(io.BytesIO(raw))
                         st.session_state.original_columns = df.columns.tolist()
                         st.session_state.uploaded_df = df
+                        st.session_state.df = df.copy()
+                        st.session_state.data_history = [df.copy()]
+                        st.session_state.features_applied = False
+                        st.session_state.last_changed_columns = []
+                        st.session_state.feature_preview_df = None
+                        st.session_state.feature_preview_message = None
+                        st.session_state.last_applied_summary = None
+                        st.session_state.quick_preview_visible = False
+                        st.session_state.quick_preview_df = None
+                        st.session_state.quick_preview_message = "Preview of EDA results."
+                        st.session_state.quick_preview_changed_cols = []
                     except Exception:
                         # If local parsing fails, still rely on backend metadata
                         st.session_state.original_columns = data.get('columns', [])
+                        st.session_state.df = None
+                        st.session_state.data_history = []
+                        st.session_state.features_applied = False
+                        st.session_state.last_changed_columns = []
+                        st.session_state.feature_preview_df = None
+                        st.session_state.feature_preview_message = None
+                        st.session_state.last_applied_summary = None
+                        st.session_state.quick_preview_visible = False
+                        st.session_state.quick_preview_df = None
+                        st.session_state.quick_preview_message = "Preview of EDA results."
+                        st.session_state.quick_preview_changed_cols = []
 
                     st.success("File uploaded successfully!")
                     st.rerun()

@@ -207,6 +207,140 @@ def sidebar_stepper(current_step):
                 st.markdown("&nbsp;", unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
+def apply_feature_suggestions(suggestions, source_df_key="uploaded_df", target_df_key="df"):
+    """
+    Apply a list of feature-suggestion actions to the dataframe stored in session_state.
+    Stays in current step and shows inline preview - does NOT force navigation.
+    
+    Args:
+        suggestions: list of dicts with transformation actions
+        source_df_key: fallback dataframe key if target doesn't exist
+        target_df_key: primary working dataframe key to update
+    
+    Returns:
+        tuple: (success: bool, message: str, preview_df: DataFrame or None)
+    """
+    df = st.session_state.get(target_df_key) or st.session_state.get(source_df_key)
+    if df is None:
+        return False, "No dataset available to apply suggestions.", None
+    
+    if df.empty:
+        return False, "Dataset is empty. Cannot apply transformations.", None
+    
+    if not suggestions or len(suggestions) == 0:
+        return False, "No suggestions provided to apply.", None
+
+    original_shape = df.shape
+    changed_columns = set()
+    
+    try:
+        # Track changes for preview
+        for suggestion in suggestions:
+            action = suggestion.get("action", "")
+            
+            if action == "drop":
+                cols = [c for c in suggestion.get("cols", []) if c in df.columns]
+                if cols:
+                    df = df.drop(columns=cols)
+                    changed_columns.update(cols)
+                    
+            elif action == "fillna":
+                col = suggestion.get("col")
+                strategy = suggestion.get("strategy", "mean")
+                value = suggestion.get("value")
+                
+                if col in df.columns:
+                    if value is not None:
+                        df[col] = df[col].fillna(value)
+                    elif strategy == "mean" and pd.api.types.is_numeric_dtype(df[col]):
+                        df[col] = df[col].fillna(df[col].mean())
+                    elif strategy == "median" and pd.api.types.is_numeric_dtype(df[col]):
+                        df[col] = df[col].fillna(df[col].median())
+                    elif strategy == "mode":
+                        df[col] = df[col].fillna(df[col].mode()[0] if not df[col].mode().empty else 0)
+                    elif strategy == "forward":
+                        df[col] = df[col].fillna(method='ffill')
+                    elif strategy == "backward":
+                        df[col] = df[col].fillna(method='bfill')
+                    changed_columns.add(col)
+                    
+            elif action == "rename":
+                mapping = suggestion.get("mapping", {})
+                valid_mapping = {k: v for k, v in mapping.items() if k in df.columns}
+                if valid_mapping:
+                    df = df.rename(columns=valid_mapping)
+                    changed_columns.update(valid_mapping.keys())
+                    
+            elif action == "cast":
+                col = suggestion.get("col")
+                dtype = suggestion.get("dtype")
+                if col in df.columns and dtype:
+                    try:
+                        df[col] = df[col].astype(dtype)
+                        changed_columns.add(col)
+                    except Exception as e:
+                        st.warning(f"Could not cast {col} to {dtype}: {str(e)}")
+                        
+            elif action == "encode":
+                col = suggestion.get("col")
+                method = suggestion.get("method", "label")
+                if col in df.columns:
+                    if method == "label":
+                        df[col] = pd.Categorical(df[col]).codes
+                    elif method == "onehot":
+                        dummies = pd.get_dummies(df[col], prefix=col)
+                        df = pd.concat([df.drop(columns=[col]), dummies], axis=1)
+                    changed_columns.add(col)
+                    
+            elif action == "derive":
+                new_col = suggestion.get("new_col")
+                expression = suggestion.get("expression")
+                if new_col and expression:
+                    try:
+                        # Safe eval with limited scope (only column names allowed)
+                        df[new_col] = eval(expression, {"__builtins__": {}}, df.to_dict('series'))
+                        changed_columns.add(new_col)
+                    except Exception as e:
+                        st.warning(f"Could not derive {new_col}: {str(e)}")
+
+        # Verify dataframe is still valid
+        if df is None or df.empty:
+            return False, "Transformations resulted in an empty dataframe.", None
+
+        # Initialize or update data history for undo functionality
+        if "data_history" not in st.session_state:
+            st.session_state["data_history"] = []
+            orig = st.session_state.get(source_df_key)
+            if orig is not None:
+                st.session_state["data_history"].append(orig.copy())
+
+        # Add snapshot to history
+        st.session_state["data_history"].append(df.copy())
+        
+        # Update working dataframe
+        st.session_state[target_df_key] = df.copy()
+        st.session_state["features_applied"] = True
+        st.session_state["last_changed_columns"] = list(changed_columns)
+        
+        # Build success message
+        new_shape = df.shape
+        changes_msg = f"Applied {len(suggestions)} transformation(s). "
+        changes_msg += f"Shape changed from {original_shape} to {new_shape}. "
+        if changed_columns:
+            changes_msg += f"Modified columns: {', '.join(list(changed_columns)[:5])}"
+            if len(changed_columns) > 5:
+                changes_msg += f" and {len(changed_columns) - 5} more"
+        
+        # Return preview (first 10 rows)
+        preview_df = df.head(10).copy()
+        return True, changes_msg, preview_df
+        
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        st.error(f"Error details: {error_details}")
+        return False, f"Error applying suggestions: {str(e)}", None
+
 def sticky_action_bar(
     apply_label=None,
     on_apply=None,
@@ -215,15 +349,37 @@ def sticky_action_bar(
     show_undo=True,
     on_undo=None,
     help_text=None,
-    key_prefix="action"
+    key_prefix="action",
+    return_to_preview=False
 ):
-    """Display a sticky action bar at the bottom of the page."""
+    """
+    Display a sticky action bar at the bottom of the page.
+    
+    Args:
+        apply_label: Text for apply button (None to hide)
+        on_apply: Callback for apply action
+        show_preview: Show preview button
+        on_preview: Callback for preview (inline preview, not navigation)
+        show_undo: Show undo button
+        on_undo: Callback for undo
+        help_text: Help text to show
+        key_prefix: Unique prefix for button keys
+        return_to_preview: If True, navigate to Smart Preview after apply (default: False)
+    """
     st.markdown(
         """
         <style>
         .sticky-bar {
-            position: fixed; bottom: 0; left: 0; width: 100%;
-            background: #181C29CC; padding: 8px 0; z-index: 99;
+            position: fixed; 
+            bottom: 0; 
+            left: 0; 
+            width: 100%;
+            background: linear-gradient(180deg, rgba(24, 28, 41, 0.95) 0%, rgba(24, 28, 41, 0.98) 100%);
+            backdrop-filter: blur(10px);
+            padding: 12px 0; 
+            z-index: 999;
+            border-top: 1px solid rgba(58, 125, 244, 0.2);
+            box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
         }
         </style>
         """,
@@ -231,43 +387,152 @@ def sticky_action_bar(
     )
     with st.container():
         st.markdown('<div class="sticky-bar">', unsafe_allow_html=True)
-        cols = st.columns(4)
+        cols = st.columns([1, 2, 2, 2, 1])
 
-    if apply_label:
-        if cols[1].button(f"✅ {apply_label}", key=f"{key_prefix}_apply"):
-            if on_apply: on_apply()
+        # Preview button (inline preview modal)
+        if show_preview and on_preview:
+            if cols[1].button("👁️ Quick Preview", key=f"{key_prefix}_preview", use_container_width=True):
+                on_preview()
 
-    # Add preview and undo as needed (uncomment if you want those features visible)
-    # if show_preview and on_preview:
-    #     if cols[0].button("👁️ Preview", key=f"{key_prefix}_preview"):
-    #         on_preview()
-    # if show_undo and on_undo:
-    #     if cols[2].button("↩️ Undo", key=f"{key_prefix}_undo"):
-    #         on_undo()
-    # if help_text:
-    #     if cols[3].button("❓ Help", key=f"{key_prefix}_help"):
-    #         st.info(help_text)
-    st.markdown('</div>', unsafe_allow_html=True)
+        # Apply button (stays in current step by default)
+        if apply_label:
+            if cols[2].button(f"✅ {apply_label}", key=f"{key_prefix}_apply", use_container_width=True, type="primary"):
+                if on_apply:
+                    on_apply()
+                # Only navigate if explicitly requested
+                if return_to_preview:
+                    st.session_state.current_step = 0  # Go to Upload/Smart Preview
+                    st.rerun()
 
-def preview_modal(changes_summary, preview_df):
+        # Undo button
+        if show_undo and on_undo:
+            if cols[3].button("↩️ Undo Last", key=f"{key_prefix}_undo", use_container_width=True):
+                on_undo()
+
+        # Help button
+        if help_text:
+            if cols[4].button("❓", key=f"{key_prefix}_help", use_container_width=True):
+                st.info(help_text)
+                
+        st.markdown('</div>', unsafe_allow_html=True)
+
+def preview_modal(changes_summary, preview_df, changed_cols=None, on_open_full=None, on_close=None, key_prefix="preview"):
+    """
+    Display an inline modal showing preview of changes.
+    Highlights changed columns if provided.
+    """
+    st.markdown("---")
     st.markdown("### 🔍 Preview of Changes")
+    
+    # Show summary in info box
     st.info(changes_summary)
-    st.dataframe(preview_df)
+    
+    # Show dataframe with optional highlighting
+    if preview_df is not None and not preview_df.empty:
+        if changed_cols and len(changed_cols) > 0:
+            st.markdown(f"**Highlighted columns:** {', '.join(changed_cols[:10])}")
+            try:
+                styled_df = highlight_changes(preview_df, changed_cols)
+                st.dataframe(styled_df, use_container_width=True)
+            except Exception as e:
+                # Fallback to regular dataframe if styling fails
+                st.dataframe(preview_df, use_container_width=True)
+        else:
+            st.dataframe(preview_df, use_container_width=True)
+        
+        # Show shape info
+        st.caption(f"Showing {len(preview_df)} rows × {len(preview_df.columns)} columns (preview)")
+    else:
+        st.warning("⚠️ No preview data available. The dataframe might be empty.")
+    
+    # Add option to navigate to Smart Preview for full analysis
+    st.markdown("")  # Spacing
+    button_cols = st.columns([1, 2, 2, 1])
+    with button_cols[1]:
+        if on_open_full:
+            st.button(
+                "📊 Open Full Smart Preview",
+                key=f"{key_prefix}_open_full",
+                use_container_width=True,
+                on_click=on_open_full
+            )
+    with button_cols[2]:
+        if on_close:
+            st.button(
+                "✖ Close Preview",
+                key=f"{key_prefix}_close",
+                use_container_width=True,
+                on_click=on_close
+            )
+    
+    st.markdown("---")
 
 def undo_last_change():
+    """Revert to previous state in data history."""
     if "data_history" in st.session_state and len(st.session_state.data_history) > 1:
         st.session_state.data_history.pop()
         st.session_state.df = st.session_state.data_history[-1].copy()
-        st.success("Reverted last change.")
+        st.session_state["features_applied"] = False
+        st.session_state.pop("last_changed_columns", None)
+        st.success("✅ Reverted to previous state.")
+        st.rerun()
     else:
-        st.warning("No changes to undo.")
+        st.warning("⚠️ No changes to undo.")
 
 def highlight_changes(df, changed_cols=None):
+    """Apply yellow highlighting to changed columns in dataframe."""
     if not changed_cols:
         return df
+    
     def highlight_col(col):
-        return ['background-color: #FFF59D' if col.name in changed_cols else '' for _ in col]
+        highlight_style = 'background-color: #FFF59D; color: #111111;'
+        return [highlight_style if col.name in changed_cols else '' for _ in col]
+    
     return df.style.apply(highlight_col, axis=0)
+
+def show_data_change_notification():
+    """
+    Show a notification banner when data has been modified via feature suggestions.
+    This appears in Smart Preview to inform users that data has changed.
+    """
+    if st.session_state.get("features_applied"):
+        changed_cols = st.session_state.get("last_changed_columns", [])
+        
+        st.markdown(
+            """
+            <style>
+            .data-changed-banner {
+                background: linear-gradient(135deg, #3A7DF4 0%, #5B8FFF 100%);
+                color: white;
+                padding: 16px 20px;
+                border-radius: 12px;
+                margin: 16px 0;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                font-weight: 500;
+                box-shadow: 0 4px 12px rgba(58, 125, 244, 0.3);
+            }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+        
+        cols_text = f" (Modified: {', '.join(changed_cols[:5])})" if changed_cols else ""
+        
+        st.markdown(
+            f"""
+            <div class="data-changed-banner">
+                <span style="font-size: 1.5rem;">🔄</span>
+                <div>
+                    <strong>Data Updated!</strong><br>
+                    Feature transformations have been applied{cols_text}. 
+                    The preview below reflects your latest changes.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
 def onboarding_tour():
     with st.expander("🚀 Take a Quick Tour!", expanded=True):
@@ -305,7 +570,8 @@ def onboarding_tour():
         ---
         ### 💡 Tips
         - Use the **sidebar stepper** to jump between steps anytime
-        - The **sticky action bar** shows context‑aware actions
+        - The **sticky action bar** shows context‑aware actions with **inline previews**
+        - **Apply suggestions** stays in Data Exploration - preview changes inline before moving forward
         - **Quick Actions** in the sidebar let you download original or synthetic data
         - Try **Demo Mode** for fast trials — no upload required
         """, unsafe_allow_html=True)
@@ -344,6 +610,10 @@ def show_feature_highlights():
     with st.expander("✨ What's New in DataMimicAI", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
+            show_new_feature_badge("Inline Feature Preview")
+            st.write("Apply suggestions and preview changes without leaving Data Exploration")
+            
+            st.markdown("---")
             show_new_feature_badge("Advanced AutoML Models")
             st.write("Use SynthCity's best-model selector for optimal results")
             if st.button("Try Now →", key="try_automl"):
@@ -357,6 +627,10 @@ def show_feature_highlights():
         with col2:
             st.markdown("### 📊 Enhanced Visualizations")
             st.write("Compare distributions and validate synthetic data quality")
+            
+            st.markdown("---")
+            st.markdown("### 🔄 Seamless Workflow")
+            st.write("Stay in context with inline previews and smart navigation")
 
 def quick_actions_panel():
     """Display quick action shortcuts in sidebar."""
@@ -462,6 +736,10 @@ def platform_settings_panel():
             st.rerun()
 
 def smart_preview_section(df, file_id):
+    """Enhanced Smart Preview with data change notifications."""
+    # Show notification if data was modified
+    show_data_change_notification()
+    
     if file_id and df is not None:
         st.markdown("### Quick Data Overview")
         col1, col2, col3 = st.columns([2,2,1])
@@ -533,7 +811,14 @@ def smart_preview_section(df, file_id):
 
         st.markdown("---")
         with st.expander("🔎 Show Data Sample", expanded=False):
-            st.dataframe(df.head(10), use_container_width=True)
+            # Highlight changed columns if features were applied
+            changed_cols = st.session_state.get("last_changed_columns", [])
+            if changed_cols and len(changed_cols) > 0:
+                styled_df = highlight_changes(df.head(10), changed_cols)
+                st.dataframe(styled_df, use_container_width=True)
+                st.caption(f"Yellow highlight shows modified columns: {', '.join(changed_cols[:5])}")
+            else:
+                st.dataframe(df.head(10), use_container_width=True)
 
         st.info("➡️ Switch to **Generation** to create synthetic data.")
     elif file_id and df is None:

@@ -7,6 +7,9 @@ import streamlit as st
 import requests
 import pandas as pd
 import os
+import base64
+import gzip
+import io
 from typing import Dict, List, Any, Optional
 
 API_BASE = os.getenv("API_URL", "http://localhost:8000")
@@ -374,23 +377,79 @@ def _display_accepted_rules(file_id: str):
         _generate_batch_code(file_id)
 
 
+def _decode_transformed_dataset(payload: Dict[str, Any]) -> Optional[pd.DataFrame]:
+    """Decode a transformed dataset payload from the backend response."""
+    if not payload:
+        return None
+    content = payload.get("content")
+    if not content:
+        return None
+    raw_bytes = base64.b64decode(content)
+    if payload.get("compression") == "gzip":
+        raw_bytes = gzip.decompress(raw_bytes)
+    text_stream = io.StringIO(raw_bytes.decode("utf-8"))
+    return pd.read_csv(text_stream)
+
+
 def _apply_transformations(file_id: str):
     """Apply accepted transformations to the dataset."""
     try:
+        dry_run = st.session_state.get("dry_run_mode", False)
         with st.spinner("Applying transformations to dataset..."):
             response = requests.post(
                 f"{API_BASE}/eda/apply-transform-config",
-                params={"file_id": file_id},
+                params={
+                    "file_id": file_id,
+                    "dry_run": dry_run
+                },
                 json={"decisions": st.session_state.accepted_decisions}
             )
             
             if response.status_code == 200:
                 result = response.json()
                 summary = result.get("summary", {})
-                
-                st.success(f"✅ Applied {summary.get('applied_count', 0)} transformations successfully!")
-                
-                # Show summary
+                transformed_payload = result.get("transformed_data") or {}
+
+                summary_message = summary.get("message") or f"✅ Applied {summary.get('applied_count', 0)} transformations successfully!"
+                st.success(summary_message)
+
+                preview_records = summary.get("preview_full") or summary.get("preview") or []
+                preview_df = pd.DataFrame(preview_records) if preview_records else pd.DataFrame()
+                st.session_state.feature_preview_df = preview_df
+                st.session_state.feature_preview_message = summary_message
+                st.session_state.last_changed_columns = summary.get("columns_modified", [])
+                st.session_state.last_applied_summary = summary
+
+                updated_df = None
+                if not summary.get("dry_run", dry_run):
+                    try:
+                        updated_df = _decode_transformed_dataset(transformed_payload)
+                    except Exception as decode_err:
+                        st.warning(f"Transformations applied, but unable to load transformed dataset: {decode_err}")
+                else:
+                    if transformed_payload and transformed_payload.get("reason"):
+                        st.info(transformed_payload["reason"])
+
+                if updated_df is not None:
+                    previous_df = st.session_state.get("df")
+                    history = st.session_state.get("data_history", [])
+                    if not history:
+                        base_df = previous_df if isinstance(previous_df, pd.DataFrame) else st.session_state.get("uploaded_df")
+                        if isinstance(base_df, pd.DataFrame):
+                            history = [base_df.copy()]
+                    else:
+                        if isinstance(previous_df, pd.DataFrame):
+                            history.append(previous_df.copy())
+                    history.append(updated_df.copy())
+                    st.session_state.data_history = history
+                    st.session_state.df = updated_df.copy()
+                    st.session_state.features_applied = True
+                else:
+                    if not summary.get("dry_run", dry_run) and transformed_payload and not transformed_payload.get("content"):
+                        st.warning(transformed_payload.get("reason", "Transformed dataset too large to download for preview."))
+                    st.session_state.features_applied = False if summary.get("dry_run", dry_run) else st.session_state.get("features_applied", False)
+
+                # Show summary details
                 with st.expander("📊 Transformation Summary", expanded=True):
                     col1, col2, col3 = st.columns(3)
                     with col1:
@@ -399,19 +458,21 @@ def _apply_transformations(file_id: str):
                         st.metric("Applied", summary.get("applied_count", 0))
                     with col3:
                         st.metric("Skipped", summary.get("skipped_count", 0))
-                    
+
                     st.markdown("**Modified Columns:**")
                     st.write(", ".join(f"`{col}`" for col in summary.get("columns_modified", [])))
-                    
+
                     if summary.get("skipped_actions"):
                         st.warning("⚠️ Some actions were skipped:")
                         for skip in summary["skipped_actions"]:
                             st.markdown(f"- `{skip['column']}` ({skip['transformation']}): {skip['reason']}")
-                    
-                    # Show preview
+
                     if summary.get("preview"):
                         st.markdown("**Preview of Modified Columns:**")
                         st.dataframe(pd.DataFrame(summary["preview"]), use_container_width=True)
+                    if summary.get("preview_full"):
+                        st.markdown("**Preview of Updated Dataset (first 50 rows):**")
+                        st.dataframe(pd.DataFrame(summary["preview_full"]), use_container_width=True)
             else:
                 st.error(f"❌ Failed to apply transformations: {response.text}")
     
