@@ -63,9 +63,11 @@ With **DataMimicAI**, these benefits become instant, practical, and scalable.
 
 ![Data Load](image/README/deshboard_data_load.png)
 
-![Synthetic Data Generation](image/README/synthetic_data_generation.png)
+![Smart Preview](image/README/Smart_Preview.png)
 
 ![EDA & Feature Engineering](image/README/eda_&_feature_engineering.png)
+
+![Synthetic Data Generation](image/README/synthetic_data_generation.png)
 
 ![Visualization](image/README/Visualization.png)
 
@@ -81,7 +83,7 @@ With **DataMimicAI**, these benefits become instant, practical, and scalable.
 ### 📁 Step 0: Upload & Smart Preview
 
 - Modular tabs:
-   📁 Data Upload | 🧐 Smart Preview (Auto-analysis) | 🚀 Take a Quick Tour!
+  📁 Data Upload | 🧐 Smart Preview (Auto-analysis) | 🚀 Take a Quick Tour!
 - Drag-and-drop CSV or toggle **Demo Mode** for instant sample data
 - Auto-inferred schema (types, missing values, basic stats, early anomaly hints)
 - Smart preview accelerates data readiness before deeper exploration
@@ -166,17 +168,11 @@ With **DataMimicAI**, these benefits become instant, practical, and scalable.
 
 ---
 
-## 🤝 Contributing
+## 🔐 License
 
-Pull requests and discussion are welcome! For major changes, please open an issue first.
+**Copyright Notice:**
+All code and documentation in this repository is Copyright (c) 2025 [Mukesh Kumawat]. All rights are reserved.
+
+This project is published publicly for showcasing and educational purposes only. No legal license for reuse, copying, modification, or distribution is granted. Unauthorized use is prohibited.
 
 ---
-
-## 💬 Notes:
-
-**DataMimicAI** is designed for clarity, modularity, and impressive user experience.Show off these highlights during your demo:
-
-- End-to-end, interactive workflow—no knowledge gaps.
-- Ready for real-world tabular AI/DS data and privacy-safe handling.
-- Advanced ML and generative modeling with a stunning UI.
-- Quick onboarding, reliability, and future extensibility.

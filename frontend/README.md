@@ -109,20 +109,15 @@ streamlit run app.py
 
 ---
 
-## 🙌 Contributing
+## 9. License
 
-* Follow clear naming, modularize logic
-* Write docstrings for all public functions
-* PRs and suggestions welcome!
+**Copyright Notice:**
+All code and documentation in this repository is Copyright (c) 2025 [Mukesh Kumawat]. All rights are reserved.
 
----
-
-## 📄 License
-
-MIT (or your organization’s choice)
+This project is published publicly for showcasing and educational purposes only. No legal license for reuse, copying, modification, or distribution is granted. Unauthorized use is prohibited.
 
 ---
 
-> For backend/API instructions, see `backend/README.md`.
+For backend/API instructions, see `backend/README.md`.
 
 ---
