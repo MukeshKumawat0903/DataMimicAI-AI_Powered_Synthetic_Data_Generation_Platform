@@ -152,6 +152,14 @@ async def upload_dataset(file: UploadFile):
             f.write(content)
 
         logger.info(f"Uploaded file '{file.filename}' as '{file_id}'")
+        
+        # Auto-trigger fast PII scan on upload (as per requirements)
+        try:
+            from src.core.eda.pii_scan import run_pii_scan_fast
+            pii_results = run_pii_scan_fast(df, sample_size=1000)
+            logger.info(f"Auto PII scan completed for file_id '{file_id}': {pii_results.get('summary', {}).get('total_pii_columns', 0)} PII columns detected")
+        except Exception as pii_error:
+            logger.warning(f"Auto PII scan failed for file_id '{file_id}': {pii_error}")
 
         return {"file_id": file_id}
 

@@ -20,6 +20,9 @@ from helpers.ui_patterns import (
     show_new_feature_badge
 )
 
+# Enhanced Smart Preview
+from helpers.smart_preview_enhanced import smart_preview_with_comparisons
+
 from helpers.file_upload import handle_demo_mode, handle_file_upload
 from helpers.generation import show_generation_controls
 from helpers.visualization import show_visualization
@@ -28,8 +31,9 @@ from helpers.validation import show_validation_and_refinement
 from helpers.eda_feature_eng.expander_data_profiling import expander_data_profiling
 from helpers.eda_feature_eng.expander_correlation import expander_correlation
 from helpers.eda_feature_eng.expander_feature_suggestions import expander_feature_suggestions
-from helpers.eda_feature_eng.expander_outlier_and_drift import expander_outlier_and_drift
-from helpers.eda_feature_eng.expander_eda_feedback_loop import expander_eda_feedback_loop
+from helpers.eda_feature_eng.expander_outlier_and_drift import expander_outlier_detection_remediation
+from helpers.eda_feature_eng.expander_privacy_audit import expander_privacy_audit
+from helpers.eda_feature_eng.expander_timeseries_analysis import expander_timeseries_analysis
 from helpers.advanced_generation import show_advanced_generation_controls
 
 from frontend_config import API_BASE as CONFIG_API_BASE
@@ -42,13 +46,14 @@ def set_step(n):
     st.rerun()
 
 def show_eda_and_feature_engineering():
-    # Reordered tabs for better workflow: Profile → Suggest → Correlate → Validate → Iterate
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    # Reordered tabs for better workflow: Profile → Suggest → Correlate → Validate → Privacy → Time-Series
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📄 Data Profiling",
-        "� Feature Suggestions", 
-        "� Correlation",
-        "⚠️ Outlier & Drift",
-        "🔁 Feedback Loop"
+        "💡 Feature Suggestions", 
+        "📊 Correlation",
+        "⚠️ Outlier Detection",
+        "🔒 Privacy Audit",
+        "⏰ Time-Series Analysis"
     ])
     with tab1:
         expander_data_profiling()
@@ -57,9 +62,11 @@ def show_eda_and_feature_engineering():
     with tab3:
         expander_correlation()
     with tab4:
-        expander_outlier_and_drift()
+        expander_outlier_detection_remediation()
     with tab5:
-        expander_eda_feedback_loop()
+        expander_privacy_audit()
+    with tab6:
+        expander_timeseries_analysis()
 
 def main():
     st.set_page_config(page_title="DataMimicAI Synthetic Data Platform", layout="wide")
@@ -77,10 +84,28 @@ def main():
         st.session_state.original_columns = []
     if 'data_history' not in st.session_state:
         st.session_state.data_history = []
+    if 'features_applied' not in st.session_state:
+        st.session_state.features_applied = False
     if 'df' not in st.session_state:
         st.session_state.df = None
     if 'uploaded_df' not in st.session_state:
         st.session_state.uploaded_df = None
+    if 'feature_preview_df' not in st.session_state:
+        st.session_state.feature_preview_df = None
+    if 'feature_preview_message' not in st.session_state:
+        st.session_state.feature_preview_message = "Preview of EDA results."
+    if 'last_changed_columns' not in st.session_state:
+        st.session_state.last_changed_columns = []
+    if 'last_applied_summary' not in st.session_state:
+        st.session_state.last_applied_summary = None
+    if 'quick_preview_visible' not in st.session_state:
+        st.session_state.quick_preview_visible = False
+    if 'quick_preview_df' not in st.session_state:
+        st.session_state.quick_preview_df = None
+    if 'quick_preview_message' not in st.session_state:
+        st.session_state.quick_preview_message = "Preview of EDA results."
+    if 'quick_preview_changed_cols' not in st.session_state:
+        st.session_state.quick_preview_changed_cols = []
     # allow per-session override of API base (editable in sidebar)
     if 'custom_api' not in st.session_state:
         st.session_state.custom_api = None
@@ -103,27 +128,84 @@ def main():
 
     st.markdown("""
     <style>
+    /* Cache buster v2.0 - Updated spacing */
+    
+    /* Aggressive global spacing reset */
+    .main .block-container {
+        padding-top: 0 !important;
+        padding-bottom: 1rem !important;
+    }
+
+    div[data-testid="stAppViewBlockContainer"] {
+        padding-top: 0 !important;
+    }
+
+    div[data-testid="stVerticalBlock"] {
+        padding-top: 0 !important;
+        margin-top: 0 !important;
+    }
+    
+    section[data-testid="stAppViewContainer"] {
+        padding-top: 0 !important;
+    }
+    
+    /* Sticky header styling */
     .sticky-top {
         position: sticky;
         top: 0;
         z-index: 999;
-        background: #181a20;
-        padding: 0.3rem 0 0.2rem;
-        border-bottom: 1px solid #23242b;
+        background: #0e1117;
+        padding: 0.5rem 0 0.5rem 0 !important;
+        margin-top: 0 !important;
+        margin-bottom: 0.75rem !important;
+        border-bottom: 2px solid #1f2937;
     }
+
+    #custom-main-scroll {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+    }
+    
     .sticky-top-title {
         font-size: 1.3rem;
         font-weight: 700;
-        margin: 0;
+        margin: 0 !important;
         line-height: 1.1;
         display: flex;
         align-items: center;
         gap: 0.6em;
     }
+    
     .sticky-top-caption {
-        font-size: 1.01rem;
-        margin: 0;
-        color: #a0a0a0;
+        font-size: 0.95rem;
+        margin: 0.25rem 0 0 0;
+        color: #9ca3af;
+    }
+    
+    /* Main page heading class */
+    .main-page-heading {
+        font-size: 1.75rem !important;
+        font-weight: 600 !important;
+        margin-top: 0 !important;
+        margin-bottom: 0.5rem !important;
+        padding-top: 0 !important;
+        line-height: 1.2 !important;
+    }
+    
+    /* Reduce spacing before tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0.5rem;
+        margin-top: 0;
+    }
+    
+    /* Tab styling improvements */
+    .stTabs [data-baseweb="tab"] {
+        padding: 0.5rem 1rem;
+    }
+    
+    /* Reduce spacing after divider */
+    hr {
+        margin: 0.75rem 0;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -184,7 +266,7 @@ def main():
             if cols[0].button("Save API URL"):
                 st.session_state.custom_api = new_api.strip() if new_api else None
                 st.session_state.edit_api = False
-                st.experimental_rerun()
+                st.rerun()
             if cols[1].button("Cancel"):
                 st.session_state.edit_api = False
         if st.button("Reset App", key="reset_app", help="Clear all data and restart from Step 0"):
@@ -193,6 +275,16 @@ def main():
                 'data_history', 'df'
             ]:
                 st.session_state[key] = None if 'id' in key or key == 'df' else []
+            st.session_state.uploaded_df = None
+            st.session_state.features_applied = False
+            st.session_state.feature_preview_df = None
+            st.session_state.feature_preview_message = "Preview of EDA results."
+            st.session_state.last_changed_columns = []
+            st.session_state.last_applied_summary = None
+            st.session_state.quick_preview_visible = False
+            st.session_state.quick_preview_df = None
+            st.session_state.quick_preview_message = "Preview of EDA results."
+            st.session_state.quick_preview_changed_cols = []
             st.session_state.current_step = 0
             st.rerun()
         
@@ -220,7 +312,7 @@ def main():
 
     step = st.session_state.current_step
     step_names = [
-        "Data Exploration",  # Renamed from "EDA & Feature Eng."
+        "Explore & Configure",  # Renamed from "EDA & Feature Eng."
         "Generate Synthetic Data",  # Renamed from "Synthetic Data Generation"
         "Validate & Refine",  # Renamed from "Visualization"
         # "Roadmap"
@@ -231,10 +323,8 @@ def main():
     if step == 0:
         sticky_section_header(
             "Data Upload",
-            subtitle="Upload your dataset to get started.",
             icon="📁"
         )
-        st.divider()
 
         # Put Tour last so upload tab is always first after rerun
         tab_titles = [
@@ -261,23 +351,24 @@ def main():
         # --- 2. Smart Preview Tab ---
         with preview_tab:
             file_id = st.session_state.get('file_id')
-            df = st.session_state.get('uploaded_df')
-            smart_preview_section(df, file_id)
+            df = st.session_state.get('df')
+            if not isinstance(df, pd.DataFrame):
+                df = st.session_state.get('uploaded_df')
+            # Use enhanced smart preview with transformation comparisons
+            smart_preview_with_comparisons(df, file_id)
 
         # --- 3. Quick Tour Tab ---
         with tour_tab:
             onboarding_tour()
             st.info("➡️ Switch to **Data Upload** to begin.")
 
-    # ---- Step 1: DATA EXPLORATION (Phase 2: Swapped with old Step 2) ----
+    # ---- Step 1: EXPLORE & CONFIGURE (Phase 2: Swapped with old Step 2) ----
     elif step == 1:
         st.markdown('<div id="custom-main-scroll">', unsafe_allow_html=True)
         sticky_section_header(
-            "Data Exploration",
-            subtitle="Understand your data to make informed generation choices",
+            "Explore & Configure",
             icon="🔍"
         )
-        st.divider()
         
         if not st.session_state.file_id:
             st.warning("📁 Please upload your dataset in Step 0 (Data Upload) first.")
@@ -285,16 +376,65 @@ def main():
             # Show EDA and Feature Engineering
             show_eda_and_feature_engineering()
             if st.session_state.df is not None:
-                st.dataframe(highlight_changes(st.session_state.df, changed_cols=None))
-        
+                with st.expander("View current dataset", expanded=False):
+                    st.dataframe(
+                        highlight_changes(
+                            st.session_state.df,
+                            st.session_state.get("last_changed_columns")
+                        ),
+                        use_container_width=True
+                    )
+
+        def _show_quick_preview():
+            preview_df = st.session_state.get("feature_preview_df")
+            if isinstance(preview_df, pd.DataFrame) and not preview_df.empty:
+                data_to_show = preview_df.copy()
+                message = st.session_state.get("feature_preview_message") or "Preview of EDA results."
+            else:
+                working_df = st.session_state.get("df")
+                if not isinstance(working_df, pd.DataFrame):
+                    working_df = st.session_state.get("uploaded_df")
+                data_to_show = working_df.head(10).copy() if isinstance(working_df, pd.DataFrame) else pd.DataFrame()
+                message = "Preview of EDA results."
+
+            st.session_state.quick_preview_visible = True
+            st.session_state.quick_preview_df = data_to_show
+            st.session_state.quick_preview_message = message
+            st.session_state.quick_preview_changed_cols = st.session_state.get("last_changed_columns", [])
+
+        def _dismiss_quick_preview():
+            st.session_state.quick_preview_visible = False
+            st.session_state.quick_preview_df = None
+            st.session_state.quick_preview_message = "Preview of EDA results."
+            st.session_state.quick_preview_changed_cols = []
+
+        def _open_full_smart_preview():
+            st.session_state.quick_preview_visible = False
+            st.session_state.quick_preview_df = None
+            st.session_state.quick_preview_message = "Preview of EDA results."
+            st.session_state.quick_preview_changed_cols = []
+            st.session_state.current_step = 0
+            st.rerun()
+
+        if st.session_state.get("quick_preview_visible"):
+            preview_data = st.session_state.get("quick_preview_df")
+            if not isinstance(preview_data, pd.DataFrame):
+                preview_data = pd.DataFrame()
+
+            preview_modal(
+                st.session_state.get("quick_preview_message") or "Preview of EDA results.",
+                preview_data,
+                st.session_state.get("quick_preview_changed_cols", []),
+                on_open_full=_open_full_smart_preview,
+                on_close=_dismiss_quick_preview,
+                key_prefix="eda_quick_preview"
+            )
+
         sticky_action_bar(
             apply_label=None,
             on_apply=None,
             show_preview=True,
-            on_preview=lambda: preview_modal(
-                "Preview of EDA results.", 
-                st.session_state.df.head() if st.session_state.df is not None else pd.DataFrame()
-            ),
+            on_preview=_show_quick_preview,
             show_undo=True,
             on_undo=undo_last_change,
             help_text="Explore, transform, and analyze your data here.",
@@ -309,11 +449,8 @@ def main():
         st.markdown('<div id="custom-main-scroll">', unsafe_allow_html=True)
         sticky_section_header(
             "Generate Synthetic Data",
-            subtitle="Create high-quality synthetic datasets based on your data insights",
             icon="⚙️"
         )
-
-        st.divider()
         
         if not st.session_state.file_id:
             st.warning("📁 Please complete Step 1 (Data Exploration) first to understand your data.")
@@ -404,10 +541,8 @@ def main():
     elif step == 3:
         sticky_section_header(
             "Validate & Refine",
-            subtitle="Compare, validate, and iteratively improve your synthetic data",
             icon="✅"
         )
-        st.divider()
         
         # Use new 3-tab validation structure: Quality Report | Detailed Analysis | Iterative Refinement
         show_validation_and_refinement()
