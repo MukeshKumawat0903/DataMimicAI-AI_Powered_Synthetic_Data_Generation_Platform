@@ -5,6 +5,7 @@ ENV PYTHONUNBUFFERED=1
 
 # Install runtime helpers and certificates
 RUN apt-get update && apt-get install -y --no-install-recommends \
+	build-essential gfortran libopenblas-dev liblapack-dev \
 	curl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
