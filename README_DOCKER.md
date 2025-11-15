@@ -117,4 +117,10 @@ You can access it at: http://localhost:8501
 Backend container:
 Port: 8000
 API should be available at: http://localhost:8000
+
+
+Note: Individual Pakages
+
+cd backend
+docker build --no-cache --progress=plain -t datamimic-backend:fix-scipy .
 ```
