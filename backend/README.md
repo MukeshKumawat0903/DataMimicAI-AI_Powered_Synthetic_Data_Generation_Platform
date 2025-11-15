@@ -1,141 +1,241 @@
 # DataMimicAI Backend
 
-**Powering the synthetic data platform with AI-driven EDA, data profiling, and advanced feature engineering.**
+FastAPI backend for **DataMimicAI – AI‑Powered Synthetic Data Generation Platform**.
+
+This service exposes APIs for:
+
+- File upload & dataset management
+- EDA & profiling
+- Feature engineering suggestions
+- Outlier & drift analysis
+- Privacy checks
+- Synthetic data generation (SDV, SynthCity, basic LLM modes)
+- Quality & validation reports
+
+The backend is designed to be consumed primarily by the Streamlit frontend (`frontend/app.py`), but you can call the APIs directly for automation.
 
 ---
 
-## 🚀 Features
+## 1. Tech Stack
 
-* **FastAPI-based REST API**
-* **EDA Endpoints:**
-
-  * Automated profiling, missing value fixes, data health report
-  * Correlation, association, and data leakage checks
-  * Outlier and drift detection
-  * AI-driven feature suggestions
-* **Synthetic Data Generation:**
-
-  * Tabular synthesis (CTGAN, TVAE, Copula, etc.)
-  * Supports custom, industry, or demo datasets
-* **Pluggable, modular backend**
-
-  * Clean separation of API (routing) and core data logic
-  * Easy to extend for new ML/EDA features
+- **Python** (3.10+ recommended)
+- **FastAPI** + **Uvicorn**
+- **Pandas**, **NumPy**
+- **SDV / SynthCity** (depending on enabled generators)
+- **scikit‑learn** (metrics, preprocessing)
+- Optional: **Docker** / **docker‑compose** for containerized runs
 
 ---
 
-## 📦 Directory Structure
+## 2. Project Structure (Backend Only)
 
-```
+```text
 backend/
+├─ src/
+│  ├─ api/
+│  │  ├─ main.py              # FastAPI app, router registration
+│  │  ├─ files_api.py         # Upload, list, load, delete datasets
+│  │  ├─ eda_api.py           # Profiling, summary stats, correlations
+│  │  ├─ feature_api.py       # Feature suggestions, transformations
+│  │  ├─ synth_api.py         # Synthetic data generation endpoints
+│  │  ├─ validation_api.py    # Quality / utility / drift evaluation
+│  │  └─ health_api.py        # Health/liveness checks
+│  │
+│  ├─ core/
+│  │  ├─ eda/                 # EDA & profiling utilities
+│  │  ├─ feature_engineering/ # Feature suggester & transforms
+│  │  ├─ synth/               # Model wrappers for SDV / SynthCity / LLM
+│  │  ├─ privacy/             # PII / privacy checks (where implemented)
+│  │  └─ utils/               # Common helpers, caching, I/O
+│  │
+│  ├─ models/                 # Pydantic schemas
+│  └─ services/               # Service layer (orchestration)
 │
-├── main.py                # FastAPI entry point
-├── requirements.txt       # Python dependencies
-├── README.md              # This file!
-│
-├── src/
-│   ├── api/               # API routers (all endpoints)
-│   ├── core/              # EDA, feature eng, synthesis logic
-│   ├── config.py          # Backend-wide config
-│   └── ...                # (See tree above)
-│
-├── uploads/               # Uploaded datasets (dev only)
-└── tests/                 # (Optional) Tests and utilities
+├─ tests/                     # Pytest‑based tests (unit & API)
+├─ Dockerfile
+├─ requirements.txt / pyproject.toml
+└─ README.md                  # (this file)
 ```
+
+> Note: Exact filenames may differ slightly; refer to `src/api` and `src/core` for the latest layout.
 
 ---
 
-## ⚙️ Getting Started
+## 3. Environment Setup
 
-### 1. **Install Python & Dependencies**
-
-* Python 3.9–3.11 recommended
-* Install all backend deps:
+From the **`backend/`** directory:
 
 ```bash
-cd backend
-python -m venv venv
-source venv/bin/activate      # or `venv\Scripts\activate` on Windows
+# 1) Create virtualenv (example using venv)
+python -m venv .venv
+source .venv/Scripts/activate  # Windows PowerShell: .\.venv\Scripts\Activate.ps1
+
+# 2) Install dependencies
 pip install -r requirements.txt
+# or (if using poetry)
+# poetry install
+```
+
+Environment variables (typical):
+
+```bash
+# API base URL used by frontend (must match docker-compose if you use it)
+export API_URL="http://localhost:8000"
+
+# Optional: logging / model options
+export LOG_LEVEL="info"
+# export SYNTHCITY_ENABLED=true
+# export SDV_SEED=42
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:API_URL="http://localhost:8000"
+$env:LOG_LEVEL="info"
 ```
 
 ---
 
-### 2. **Run the API Server**
+## 4. Running the Backend
+
+### Local (dev, hot‑reload)
+
+From `backend/`:
 
 ```bash
-uvicorn main:app --reload
+uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-* Visit [http://localhost:8000/docs](http://localhost:8000/docs) for interactive Swagger UI
-* The API is ready for Streamlit frontend or manual API calls
+Then open:
 
----
+- API docs (Swagger): http://localhost:8000/docs
+- ReDoc docs: http://localhost:8000/redoc
 
-### 3. **Environment Variables**
+The Streamlit frontend (in `frontend/app.py`) should point to the same `API_URL`.
 
-Set via `.env` or directly in shell.
+### With Docker
 
-| Variable          | Purpose                            | Example                 |
-| ----------------- | ---------------------------------- | ----------------------- |
-| `UPLOAD_DIR`      | Where uploads are stored           | `uploads`               |
-| `API_URL`         | Public API base (used by frontend) | `http://localhost:8000` |
-| `SYNTH_MODEL_DIR` | Pretrained model cache (optional)  | `models`                |
-
----
-
-## 🔗 API Overview
-
-Key endpoints (see `/docs` for details):
-
-* `POST /upload` — Upload new dataset (CSV)
-* `POST /eda/profile` — Automated data profiling/report
-* `POST /eda/fix-missing` — Impute/fix missing values
-* `POST /eda/correlation` — Correlation heatmaps, patterns
-* `POST /eda/feature-suggestions` — AI feature engineering
-* `POST /eda/detect-outliers` — Outlier detection/removal
-* `POST /eda/detect-drift` — Drift detection between real/synthetic
-* `POST /generate` — Run synthetic data generation
-
----
-
-## 🛠️ Developer Notes
-
-* **API routers**: `src/api/eda_feature_api.py` (add new endpoints here)
-* **Business/data logic**:
-
-  * Profiling/correlation/outliers: `src/core/eda/`
-  * Synthetic generation: `src/core/synth/`
-  * Utils/helpers: `src/core/utils/`
-* **Uploads**: `uploads/` is gitignored (local/dev only, not for prod)
-
----
-
-## 🧪 Testing
-
-Add unit tests in `/tests/` (pytest recommended):
+From the repo root (where `docker-compose.yml` lives):
 
 ```bash
+docker compose up --build backend
+# or full stack:
+docker compose up --build
+```
+
+This typically exposes:
+
+- Backend: http://localhost:8000
+- Frontend: http://localhost:8501
+
+---
+
+## 5. Key API Endpoints (Overview)
+
+> See live docs at `/docs` for the exact latest schemas.
+
+### 5.1 Health
+
+- `GET /health` – basic health check
+
+### 5.2 File & Dataset Management
+
+- `POST /files/upload` – upload CSV; returns `file_id`
+- `GET  /files/{file_id}` – basic metadata
+- `GET  /files/{file_id}/data` – load dataset (sample or full)
+- `DELETE /files/{file_id}` – remove dataset
+
+### 5.3 EDA & Profiling
+
+- `POST /eda/summary` – high‑level stats (rows, columns, types, missing)
+- `POST /eda/describe` – per‑column summary
+- `POST /eda/correlation` – correlation matrix / top‑N correlations
+- `POST /eda/distributions` – distribution info for selected columns
+
+### 5.4 Feature Engineering & Suggestions
+
+- `POST /features/suggestions`Inputs: dataset metadata, optional target columnOutputs: list of suggested transforms (fillna, encoding, binning, derived features, etc.)
+- `POST /features/apply`
+  Applies selected suggestions server‑side and returns a new `file_id` or transformed sample.
+  The Streamlit app currently applies most transformations client‑side, but this endpoint is available for future server‑side use.
+
+### 5.5 Synthetic Data Generation
+
+- `POST /synth/generate`
+
+  - Body includes:
+    - `file_id` (source dataset)
+    - generator type (`sdv_ctgan`, `sdv_copula`, `synthcity_*`, etc.)
+    - row count / ratio
+    - random seed / model params
+  - Returns:
+    - `generated_file_id`
+    - basic metadata about synthetic dataset
+- `GET /synth/{generated_file_id}/download` – download synthetic data as CSV
+
+### 5.6 Validation & Quality
+
+- `POST /validation/quality`
+
+  - Utility metrics (distribution similarity, column‑wise distances)
+- `POST /validation/drift`
+
+  - Drift between original and synthetic datasets
+- `POST /validation/privacy`
+
+  - Where implemented: nearest‑neighbor / memorization‑style checks
+
+---
+
+## 6. How It Integrates with the Frontend
+
+The Streamlit frontend (`frontend/app.py`) uses `API_BASE` (resolved from `CONFIG_API_BASE` + `API_URL` env var) to call this backend.
+
+Typical flow:
+
+1. User uploads CSV in frontend → frontend calls `POST /files/upload`
+2. Frontend fetches EDA summaries → `POST /eda/*`
+3. Feature suggestions shown → user applies them → data history maintained in Streamlit
+4. User configures generator → frontend calls `POST /synth/generate`
+5. Validation / comparison → `POST /validation/*`
+6. Both original and synthetic can be downloaded from the frontend.
+
+The **Quick Preview / Smart Preview** UI in the frontend now works purely from the current session DataFrame; the backend is used for heavier EDA and generation.
+
+---
+
+## 7. Testing
+
+From `backend/`:
+
+```bash
+# Run all tests
 pytest
+
+# Run with coverage
+pytest --cov=src --cov-report=term-missing
 ```
 
----
-
-## ✨ Contributing
-
-* Style: PEP8 for Python, docstrings for public functions/classes
-* Write/extend endpoints in `src/api/`
-* Modularize new EDA/synthesis features in `src/core/`
-* Issues/PRs welcome!
+You may need to start a local test DB or configure test fixtures if you add DB‑backed features later.
 
 ---
 
-## 📄 License
+## 8. Development Notes
 
-MIT (or your org’s preferred)
+- Keep long‑running model training / generation off the main thread if you expect large datasets or many users (consider background tasks, Celery, or async jobs).
+- Prefer **pydantic models** for request/response validation.
+- When adding new endpoints:
+  1. Add a pydantic schema in `src/models/`
+  2. Implement logic in `src/core/*` or `src/services/*`
+  3. Expose it from `src/api/*.py` with clear tags & descriptions
+  4. Add minimal tests under `tests/`
 
 ---
 
-> For frontend/UI instructions, see `frontend/README.md`.
+## 9. License
 
----
+**Copyright Notice:**
+All code and documentation in this repository is Copyright (c) 2025 [Mukesh Kumawat]. All rights are reserved.
+
+This project is published publicly for showcasing and educational purposes only. No legal license for reuse, copying, modification, or distribution is granted. Unauthorized use is prohibited.

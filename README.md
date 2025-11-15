@@ -63,9 +63,11 @@ With **DataMimicAI**, these benefits become instant, practical, and scalable.
 
 ![Data Load](image/README/deshboard_data_load.png)
 
-![Synthetic Data Generation](image/README/synthetic_data_generation.png)
+![Smart Preview](image/README/Smart_Preview.png)
 
 ![EDA & Feature Engineering](image/README/eda_&_feature_engineering.png)
+
+![Synthetic Data Generation](image/README/synthetic_data_generation.png)
 
 ![Visualization](image/README/Visualization.png)
 
@@ -82,32 +84,40 @@ With **DataMimicAI**, these benefits become instant, practical, and scalable.
 
 - Modular tabs:
   📁 Data Upload | 🧐 Smart Preview (Auto-analysis) | 🚀 Take a Quick Tour!
-- Drag-and-drop CSV or use demo datasets
-- Auto-inferred schema (type detection, null analysis, outlier flags)
-- Inline cleanup actions
-- Built-in onboarding tour for new users
+- Drag-and-drop CSV or toggle **Demo Mode** for instant sample data
+- Auto-inferred schema (types, missing values, basic stats, early anomaly hints)
+- Smart preview accelerates data readiness before deeper exploration
+- Built-in onboarding tour + jump buttons for fast navigation
 
-### ⚙️ Step 1: Synthetic Data Generation
+### 🔍 Step 1: Explore & Configure (EDA & Feature Engineering)
 
-- Modular tabs:🚀 Standard Models | 💎 Advanced / AutoM | ✍️ LLM-Powered
+- Modular tabs: 📄 Profiling | 💡 Feature Suggestions | 🔗 Correlation | ⚠️ Outliers & Drift | 🔁 Feedback Loop
+- **Profiling:** Structure, distributions, potential quality flags
+- **Feature Suggestions:** AI-guided transformation and engineering ideas
+- **Correlation:** Pairwise relationships & redundancy insights
+- **Outliers & Drift:** Spot anomalies and early distribution shifts
+- **Feedback Loop:** Iterate using analysis to inform generation choices
+
+### ⚙️ Step 2: Synthetic Data Generation
+
+- Modular tabs: 🚀 Standard Models | 💎 Advanced / AutoML | ✍️ LLM-Powered
 - **Standard SDV Models:** CTGAN, TVAE, GaussianCopula
 - **Advanced SynthCity Models:** TabDDPM, PrivBayes, DP-GAN, PATE-GAN, ARF, more
-- **AutoML Support:** Automatically selects the best model based on data
-- **LLM-Driven Generator (Experimental):** Prompt-to-data with GPT-style models --> *Coming Soon*
+- **AutoML Support:** Best-model selection based on dataset characteristics
+- **LLM-Powered (Experimental):** Prompt/schema guided generation (Coming Soon)
 
-### 🔍 Step 2: EDA & Feature Engineering
+### ✅ Step 3: Validate & Refine
 
-- Modular EDA tabs:📄 Profiling | 🔗 Correlation | 💡 Feature Suggestions | ⚠️ Outliers & Drift | 🔁 Feedback Loop
-- AI-guided insights and transformations
-- Real-time data preview with change highlights
+- Version tracking of generated datasets
+- Quality scoring & distribution comparison (original vs synthetic)
+- Visual fidelity checks and drift indicators
+- Refinement recommendations for iterative improvement
 
-### 📊 Step 3: Visualization
+### 📊 Visualization (Integrated Across Steps)
 
-- **Modular Tabs:**📈 Distribution | 🔗 Pair Plot | 🆚 Real vs. Synthetic | 📉 Drift Detection | 📊 Correlation
-- **Rich Visual Comparison** of real vs. synthetic datasets
-- Support for histograms, bar charts, scatter plots, pairplots, and heatmaps
-- Column-level drill-down and side-by-side metric views
-- Visual indicators for drift, mode collapse, and fidelity loss
+- In-context charts for profiling, correlation, drift, and validation
+- Side-by-side comparisons embedded in validation workflow
+- Planned: Dedicated advanced visualization hub (coming soon)
 
 ### 🧰 Platform Utilities
 
@@ -158,17 +168,11 @@ With **DataMimicAI**, these benefits become instant, practical, and scalable.
 
 ---
 
-## 🤝 Contributing
+## 🔐 License
 
-Pull requests and discussion are welcome! For major changes, please open an issue first.
+**Copyright Notice:**
+All code and documentation in this repository is Copyright (c) 2025 [Mukesh Kumawat]. All rights are reserved.
+
+This project is published publicly for showcasing and educational purposes only. No legal license for reuse, copying, modification, or distribution is granted. Unauthorized use is prohibited.
 
 ---
-
-## 💬 Notes:
-
-**DataMimicAI** is designed for clarity, modularity, and impressive user experience.Show off these highlights during your demo:
-
-- End-to-end, interactive workflow—no knowledge gaps.
-- Ready for real-world tabular AI/DS data and privacy-safe handling.
-- Advanced ML and generative modeling with a stunning UI.
-- Quick onboarding, reliability, and future extensibility.
