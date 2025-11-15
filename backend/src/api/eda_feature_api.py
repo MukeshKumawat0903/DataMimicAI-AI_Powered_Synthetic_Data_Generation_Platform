@@ -6,6 +6,9 @@ import pandas as pd
 import numpy as np
 import logging
 import os
+import base64
+import gzip
+import io
 
 from src.core.eda.profiling import (
     Profiler, DataCleaner, EDAConfig, ProfilingError,
@@ -1053,20 +1056,77 @@ async def apply_transform_config(
             summary["preview"] = preview_df.to_dict(orient="records")
         else:
             summary["preview"] = []
+
+        # Provide a broader preview across all columns for UI display
+        full_preview_limit = min(50, len(df_transformed))
+        summary["preview_full"] = (
+            df_transformed.head(full_preview_limit).to_dict(orient="records")
+            if full_preview_limit > 0 else []
+        )
+        summary["preview_shape"] = [int(df_transformed.shape[0]), int(df_transformed.shape[1])]
+        summary["preview_columns"] = list(df_transformed.columns)
+
+        applied_msg = f"Applied {summary['applied_count']} transformation(s)."
+        if summary["skipped_count"] > 0:
+            applied_msg += f" {summary['skipped_count']} action(s) skipped."
+
+        transformed_data_payload = None
+        try:
+            csv_buffer = io.StringIO()
+            df_transformed.to_csv(csv_buffer, index=False)
+            csv_bytes = csv_buffer.getvalue().encode("utf-8")
+            csv_size = len(csv_bytes)
+            max_bytes = int(os.environ.get("TRANSFORMED_DATA_MAX_BYTES", 5 * 1024 * 1024))
+            max_bytes_mb = max_bytes / (1024 * 1024)
+            
+            if csv_size <= max_bytes:
+                compressed_bytes = gzip.compress(csv_bytes)
+                transformed_data_payload = {
+                    "format": "csv",
+                    "encoding": "base64",
+                    "compression": "gzip",
+                    "size_bytes": csv_size,
+                    "compressed_size_bytes": len(compressed_bytes),
+                    "rows": int(df_transformed.shape[0]),
+                    "columns": list(df_transformed.columns),
+                    "content": base64.b64encode(compressed_bytes).decode("utf-8")
+                }
+            else:
+                transformed_data_payload = {
+                    "format": "csv",
+                    "encoding": "base64",
+                    "compression": "gzip",
+                    "size_bytes": csv_size,
+                    "rows": int(df_transformed.shape[0]),
+                    "columns": list(df_transformed.columns),
+                    "content": None,
+                    "content_available": False,
+                    "reason": f"Transformed dataset size {csv_size/1024/1024:.2f} MB exceeds limit ({max_bytes_mb:.2f} MB)"
+                }
+        except Exception as e:
+            logger.warning(f"Failed to serialize transformed dataset: {e}")
+            transformed_data_payload = {
+                "format": "csv",
+                "encoding": "base64",
+                "compression": "gzip",
+                "content": None,
+                "error": str(e)
+            }
         
+        summary_message = applied_msg
         # Save transformed data only if NOT dry run
         if not dry_run:
-            # Optionally save transformed data
-            # df_transformed.to_csv(os.path.join(UPLOAD_DIR, f"{file_id}_transformed.csv"), index=False)
             logger.info(f"Transformations applied (not saved to disk): {len(applied_actions)} actions")
         else:
             logger.info(f"DRY RUN: Previewed {len(applied_actions)} transformations without persisting")
-            summary["message"] = "Dry run mode: Transformations previewed only, not persisted"
-        
+            summary_message = f"{applied_msg} Dry run mode: Transformations previewed only, not persisted."
 
+        summary["message"] = summary_message
+        
         return JSONResponse({
             "status": "applied",
-            "summary": summary
+            "summary": summary,
+            "transformed_data": transformed_data_payload
         })
         
     except HTTPException:

@@ -84,10 +84,28 @@ def main():
         st.session_state.original_columns = []
     if 'data_history' not in st.session_state:
         st.session_state.data_history = []
+    if 'features_applied' not in st.session_state:
+        st.session_state.features_applied = False
     if 'df' not in st.session_state:
         st.session_state.df = None
     if 'uploaded_df' not in st.session_state:
         st.session_state.uploaded_df = None
+    if 'feature_preview_df' not in st.session_state:
+        st.session_state.feature_preview_df = None
+    if 'feature_preview_message' not in st.session_state:
+        st.session_state.feature_preview_message = "Preview of EDA results."
+    if 'last_changed_columns' not in st.session_state:
+        st.session_state.last_changed_columns = []
+    if 'last_applied_summary' not in st.session_state:
+        st.session_state.last_applied_summary = None
+    if 'quick_preview_visible' not in st.session_state:
+        st.session_state.quick_preview_visible = False
+    if 'quick_preview_df' not in st.session_state:
+        st.session_state.quick_preview_df = None
+    if 'quick_preview_message' not in st.session_state:
+        st.session_state.quick_preview_message = "Preview of EDA results."
+    if 'quick_preview_changed_cols' not in st.session_state:
+        st.session_state.quick_preview_changed_cols = []
     # allow per-session override of API base (editable in sidebar)
     if 'custom_api' not in st.session_state:
         st.session_state.custom_api = None
@@ -248,7 +266,7 @@ def main():
             if cols[0].button("Save API URL"):
                 st.session_state.custom_api = new_api.strip() if new_api else None
                 st.session_state.edit_api = False
-                st.experimental_rerun()
+                st.rerun()
             if cols[1].button("Cancel"):
                 st.session_state.edit_api = False
         if st.button("Reset App", key="reset_app", help="Clear all data and restart from Step 0"):
@@ -257,6 +275,16 @@ def main():
                 'data_history', 'df'
             ]:
                 st.session_state[key] = None if 'id' in key or key == 'df' else []
+            st.session_state.uploaded_df = None
+            st.session_state.features_applied = False
+            st.session_state.feature_preview_df = None
+            st.session_state.feature_preview_message = "Preview of EDA results."
+            st.session_state.last_changed_columns = []
+            st.session_state.last_applied_summary = None
+            st.session_state.quick_preview_visible = False
+            st.session_state.quick_preview_df = None
+            st.session_state.quick_preview_message = "Preview of EDA results."
+            st.session_state.quick_preview_changed_cols = []
             st.session_state.current_step = 0
             st.rerun()
         
@@ -323,7 +351,9 @@ def main():
         # --- 2. Smart Preview Tab ---
         with preview_tab:
             file_id = st.session_state.get('file_id')
-            df = st.session_state.get('uploaded_df')
+            df = st.session_state.get('df')
+            if not isinstance(df, pd.DataFrame):
+                df = st.session_state.get('uploaded_df')
             # Use enhanced smart preview with transformation comparisons
             smart_preview_with_comparisons(df, file_id)
 
@@ -346,16 +376,65 @@ def main():
             # Show EDA and Feature Engineering
             show_eda_and_feature_engineering()
             if st.session_state.df is not None:
-                st.dataframe(highlight_changes(st.session_state.df, changed_cols=None))
-        
+                with st.expander("View current dataset", expanded=False):
+                    st.dataframe(
+                        highlight_changes(
+                            st.session_state.df,
+                            st.session_state.get("last_changed_columns")
+                        ),
+                        use_container_width=True
+                    )
+
+        def _show_quick_preview():
+            preview_df = st.session_state.get("feature_preview_df")
+            if isinstance(preview_df, pd.DataFrame) and not preview_df.empty:
+                data_to_show = preview_df.copy()
+                message = st.session_state.get("feature_preview_message") or "Preview of EDA results."
+            else:
+                working_df = st.session_state.get("df")
+                if not isinstance(working_df, pd.DataFrame):
+                    working_df = st.session_state.get("uploaded_df")
+                data_to_show = working_df.head(10).copy() if isinstance(working_df, pd.DataFrame) else pd.DataFrame()
+                message = "Preview of EDA results."
+
+            st.session_state.quick_preview_visible = True
+            st.session_state.quick_preview_df = data_to_show
+            st.session_state.quick_preview_message = message
+            st.session_state.quick_preview_changed_cols = st.session_state.get("last_changed_columns", [])
+
+        def _dismiss_quick_preview():
+            st.session_state.quick_preview_visible = False
+            st.session_state.quick_preview_df = None
+            st.session_state.quick_preview_message = "Preview of EDA results."
+            st.session_state.quick_preview_changed_cols = []
+
+        def _open_full_smart_preview():
+            st.session_state.quick_preview_visible = False
+            st.session_state.quick_preview_df = None
+            st.session_state.quick_preview_message = "Preview of EDA results."
+            st.session_state.quick_preview_changed_cols = []
+            st.session_state.current_step = 0
+            st.rerun()
+
+        if st.session_state.get("quick_preview_visible"):
+            preview_data = st.session_state.get("quick_preview_df")
+            if not isinstance(preview_data, pd.DataFrame):
+                preview_data = pd.DataFrame()
+
+            preview_modal(
+                st.session_state.get("quick_preview_message") or "Preview of EDA results.",
+                preview_data,
+                st.session_state.get("quick_preview_changed_cols", []),
+                on_open_full=_open_full_smart_preview,
+                on_close=_dismiss_quick_preview,
+                key_prefix="eda_quick_preview"
+            )
+
         sticky_action_bar(
             apply_label=None,
             on_apply=None,
             show_preview=True,
-            on_preview=lambda: preview_modal(
-                "Preview of EDA results.", 
-                st.session_state.df.head() if st.session_state.df is not None else pd.DataFrame()
-            ),
+            on_preview=_show_quick_preview,
             show_undo=True,
             on_undo=undo_last_change,
             help_text="Explore, transform, and analyze your data here.",
