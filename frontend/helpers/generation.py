@@ -324,7 +324,7 @@ def _upload_to_s3(data_bytes: bytes, key: str):
     api_base = get_api_base()
     try:
         # Ask backend for pre-signed URL
-        resp = requests.post(f"{api_base}/s3/presign", json={"key": key})
+        resp = requests.post(f"{api_base}/s3/presign", json={"key": key}, timeout=30)
         if resp.status_code != 200:
             st.error(f"Failed to get presigned URL: {resp.text}")
             return
@@ -334,7 +334,7 @@ def _upload_to_s3(data_bytes: bytes, key: str):
             st.error("Presigned URL not returned by backend")
             return
         # Upload directly to S3
-        upload_resp = requests.put(presigned_url, data=data_bytes)
+        upload_resp = requests.put(presigned_url, data=data_bytes, timeout=300)
         if upload_resp.status_code in (200, 201):
             st.success("Uploaded to S3 successfully")
         else:

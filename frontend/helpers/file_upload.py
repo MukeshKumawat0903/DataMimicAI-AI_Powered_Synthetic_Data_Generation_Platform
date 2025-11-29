@@ -34,7 +34,7 @@ def handle_demo_mode():
                 response = requests.post(
                     f"{get_api_base()}/load-demo",
                     params={"algorithm": algorithm},
-                    timeout=10
+                    timeout=120  # 2 minutes for cold start + processing
                 )
                 if response.status_code == 200:
                     data = response.json()
@@ -123,7 +123,7 @@ def handle_file_upload():
                         response = requests.post(
                             f"{get_api_base()}/upload",
                             files=files,
-                            timeout=30
+                            timeout=300  # 5 minutes to handle cold start (60s) + upload + processing
                         )
                     except requests.exceptions.ConnectionError:
                         st.error(
