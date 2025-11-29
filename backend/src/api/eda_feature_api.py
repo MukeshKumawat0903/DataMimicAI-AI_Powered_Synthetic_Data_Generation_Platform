@@ -1411,7 +1411,7 @@ async def get_pet_mapping(
         
         try:
             k_analyzer = KAnonymityAnalyzer(df)
-            potential_qis = k_analyzer.detect_potential_quasi_identifiers()
+            potential_qis = k_analyzer.identify_potential_qis()
             k_anonymity_report = {"potential_qis": potential_qis}
         except Exception as e:
             logger.warning(f"K-anonymity analysis failed: {e}")
