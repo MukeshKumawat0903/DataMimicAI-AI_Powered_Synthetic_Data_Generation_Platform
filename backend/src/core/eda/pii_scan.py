@@ -2,6 +2,7 @@
 PII Detection Module
 Implements fast regex-based and deep AI-powered PII detection for privacy auditing.
 """
+import os
 import pandas as pd
 import numpy as np
 import re
@@ -40,6 +41,9 @@ class PIIScanner:
     """
     Detects Personally Identifiable Information (PII) in datasets.
     Supports both fast regex-based scanning and deep AI-powered analysis.
+    
+    NOTE: Deep scanning (Presidio) is currently DISABLED to reduce memory usage on deployment.
+    Only fast regex-based scanning is active.
     """
     
     def __init__(self, df: pd.DataFrame):
@@ -54,15 +58,43 @@ class PIIScanner:
         self.deep_results = {}
         self.presidio_available = False
         
-        # Try to import Presidio for deep scanning
-        try:
-            from presidio_analyzer import AnalyzerEngine
-            self.analyzer = AnalyzerEngine()
-            self.presidio_available = True
-            logger.info("Presidio analyzer loaded successfully")
-        except ImportError:
-            logger.warning("Presidio not available. Deep PII scanning will be limited.")
-            self.analyzer = None
+        # FEATURE DISABLED: Presidio deep scanning commented out to save memory (~100-200MB)
+        # Uncomment the block below to re-enable deep AI-powered PII detection
+        
+        # # Try to import Presidio for deep scanning
+        # try:
+        #     from presidio_analyzer import AnalyzerEngine
+        #     from presidio_analyzer.nlp_engine import NlpEngineProvider
+
+        #     # Suppress Presidio's internal configuration warnings
+        #     presidio_logger = logging.getLogger("presidio-analyzer")
+        #     presidio_logger.setLevel(logging.ERROR)
+
+        #     # Force Presidio to use a specific spaCy pipeline to prevent runtime downloads.
+        #     model_name = os.getenv("PRESIDIO_SPACY_MODEL", "en_core_web_sm")
+        #     nlp_config = {
+        #         "nlp_engine_name": "spacy",
+        #         "models": [{"lang_code": "en", "model_name": model_name}],
+        #     }
+        #     provider = NlpEngineProvider(nlp_configuration=nlp_config)
+        #     
+        #     # Initialize AnalyzerEngine
+        #     self.analyzer = AnalyzerEngine(
+        #         nlp_engine=provider.create_engine(),
+        #         default_score_threshold=0.5,
+        #         supported_languages=["en"]
+        #     )
+        #     self.presidio_available = True
+        #     logger.info("Presidio analyzer loaded successfully with %s", model_name)
+        # except ImportError:
+        #     logger.warning("Presidio not available. Deep PII scanning will be limited.")
+        #     self.analyzer = None
+        # except Exception as exc:
+        #     logger.warning("Failed to initialize Presidio analyzer: %s", exc)
+        #     self.analyzer = None
+        
+        self.analyzer = None
+        logger.info("PII Scanner initialized in FAST-ONLY mode (Deep scan disabled)")
     
     def run_fast_scan(self, sample_size: int = 1000) -> Dict:
         """
@@ -161,6 +193,9 @@ class PIIScanner:
         """
         Deep PII scan using Microsoft Presidio AI analyzer.
         
+        FEATURE DISABLED: This feature is currently disabled to reduce memory usage.
+        Automatically falls back to fast scan.
+        
         Args:
             columns: Specific columns to scan (None = all text columns)
             sample_size: Number of rows to analyze per column
@@ -169,9 +204,14 @@ class PIIScanner:
         Returns:
             Dict with detailed PII detections including positions and confidence
         """
-        if not self.presidio_available:
-            logger.warning("Presidio not available. Falling back to fast scan.")
-            return self.run_fast_scan(sample_size)
+        # DISABLED: Deep scan feature commented out to save ~100-200MB memory
+        logger.info("Deep scan is currently disabled. Using fast scan instead.")
+        return self.run_fast_scan(sample_size)
+        
+        # Original deep scan logic (COMMENTED OUT)
+        # if not self.presidio_available:
+        #     logger.warning("Presidio not available. Falling back to fast scan.")
+        #     return self.run_fast_scan(sample_size)
         
         results = {
             "summary": {

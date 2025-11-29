@@ -1,0 +1,24 @@
+{
+  "file_id": "6e7382b3-b844-4a04-a29e-771fbdbeb1e3",
+  "analysis_type": "detection",
+  "timestamp": "2025-11-27T07:30:52.706768",
+  "results": {
+    "is_timeseries": true,
+    "datetime_columns": [
+      "Date"
+    ],
+    "primary_datetime_column": "Date",
+    "frequency": "0D 0S",
+    "is_regular": true,
+    "start_date": "2018-12-31T00:00:00",
+    "end_date": "2019-12-30T00:00:00",
+    "periods": 25784,
+    "potential_targets": [
+      "Open",
+      "Close",
+      "Volume",
+      "MarketCap"
+    ],
+    "detection_confidence": "medium"
+  }
+}

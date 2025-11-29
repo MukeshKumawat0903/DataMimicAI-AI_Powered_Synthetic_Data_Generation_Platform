@@ -13,8 +13,17 @@ WORKDIR /backend
 
 # Copy and install python deps (this should be backend/requirements.txt)
 COPY requirements.txt ./
+
+# CRITICAL: Install CPU-only PyTorch FIRST with specific version tags
 RUN python -m pip install --upgrade pip setuptools wheel \
- && pip install --no-cache-dir -r requirements.txt
+ && pip install --no-cache-dir \
+    torch==2.2.2+cpu \
+    torchvision==0.17.2+cpu \
+    torchtext==0.17.2+cpu \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+ && pip install --no-cache-dir -r requirements.txt \
+ && python -m spacy download en_core_web_sm \
+ && python -c "import torch; assert '+cpu' in torch.__version__, f'Wrong torch: {torch.__version__}'; print(f'✅ CPU-only PyTorch {torch.__version__} installed')"
 
 ### Stage 2: runtime (smaller)
 FROM python:3.11-slim AS runtime

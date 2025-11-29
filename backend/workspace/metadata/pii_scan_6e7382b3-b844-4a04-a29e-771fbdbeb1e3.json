@@ -1,0 +1,30 @@
+{
+  "file_id": "6e7382b3-b844-4a04-a29e-771fbdbeb1e3",
+  "timestamp": "2025-11-27T13:01:16.017973",
+  "fast_scan": {
+    "summary": {
+      "total_columns": 8,
+      "pii_columns_detected": 0,
+      "scan_type": "fast",
+      "sample_size": 1000
+    },
+    "detections": []
+  },
+  "deep_scan": {},
+  "summary": {
+    "total_columns": 8,
+    "columns_with_pii": 0,
+    "high_risk_columns": 0,
+    "high_risk_column_list": [],
+    "scan_type": "fast",
+    "sample_size": 1000,
+    "recommendations": [],
+    "fast_scan": {
+      "total_columns": 8,
+      "pii_columns_detected": 0,
+      "scan_type": "fast",
+      "sample_size": 1000
+    },
+    "deep_scan": {}
+  }
+}
