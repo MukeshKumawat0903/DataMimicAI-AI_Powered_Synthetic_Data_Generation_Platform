@@ -46,27 +46,65 @@ def set_step(n):
     st.rerun()
 
 def show_eda_and_feature_engineering():
-    # Reordered tabs for better workflow: Profile → Suggest → Correlate → Validate → Privacy → Time-Series
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "📄 Data Profiling",
-        "💡 Feature Suggestions", 
-        "📊 Correlation",
-        "⚠️ Outlier Detection",
-        "🔒 Privacy Audit",
-        "⏰ Time-Series Analysis"
-    ])
-    with tab1:
-        expander_data_profiling()
-    with tab2:
-        expander_feature_suggestions()
-    with tab3:
-        expander_correlation()
-    with tab4:
-        expander_outlier_detection_remediation()
-    with tab5:
-        expander_privacy_audit()
-    with tab6:
-        expander_timeseries_analysis()
+    # Initialize mode state
+    if 'explore_mode' not in st.session_state:
+        st.session_state.explore_mode = 'analysis'
+    
+    # Top-level mode switch
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("📊 Data Analysis", use_container_width=True,
+                     type="primary" if st.session_state.explore_mode == 'analysis' else "secondary"):
+            st.session_state.explore_mode = 'analysis'
+            st.rerun()
+    with col2:
+        if st.button("🤖 AI Assistance", use_container_width=True, 
+                     type="primary" if st.session_state.explore_mode == 'ai' else "secondary"):
+            st.session_state.explore_mode = 'ai'
+            st.rerun()
+    
+    st.markdown('---')
+    
+    # Render content based on active mode
+    if st.session_state.explore_mode == 'analysis':
+        # EXISTING analysis tabs - unchanged
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+            "📄 Data Profiling",
+            "💡 Feature Suggestions", 
+            "📊 Correlation",
+            "⚠️ Outlier Detection",
+            "🔒 Privacy Audit",
+            "⏰ Time-Series Analysis"
+        ])
+        with tab1:
+            expander_data_profiling()
+        with tab2:
+            expander_feature_suggestions()
+        with tab3:
+            expander_correlation()
+        with tab4:
+            expander_outlier_detection_remediation()
+        with tab5:
+            expander_privacy_audit()
+        with tab6:
+            expander_timeseries_analysis()
+    
+    elif st.session_state.explore_mode == 'ai':
+        # AI Assistance placeholder UI
+        ai_tab1, ai_tab2, ai_tab3, ai_tab4 = st.tabs([
+            "🔍 Explain",
+            "🤖 AI Suggestions",
+            "⚠️ Risks",
+            "📄 Summary"
+        ])
+        with ai_tab1:
+            st.info("🔍 **Explain**: Coming soon - AI-powered explanations of your data patterns and relationships.")
+        with ai_tab2:
+            st.info("🤖 **AI Suggestions**: Coming soon - Intelligent recommendations for data transformations and feature engineering.")
+        with ai_tab3:
+            st.info("⚠️ **Risks**: Coming soon - Automated risk assessment and data quality warnings.")
+        with ai_tab4:
+            st.info("📄 **Summary**: Coming soon - Comprehensive AI-generated analysis summary.")
 
 def main():
     st.set_page_config(page_title="DataMimicAI Synthetic Data Platform", layout="wide")
@@ -206,6 +244,11 @@ def main():
     /* Reduce spacing after divider */
     hr {
         margin: 0.75rem 0;
+    }
+    
+    /* Reduce spacing for button groups */
+    .stButton button {
+        margin-top: 0 !important;
     }
     </style>
     """, unsafe_allow_html=True)
