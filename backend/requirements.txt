@@ -26,6 +26,10 @@ SQLAlchemy==2.0.28
 PyJWT==2.8.0
 passlib==1.7.4
 
+# LLM Integration
+langchain-groq>=0.1.0
+langchain-core>=0.1.0
+
 #Other
 python-dotenv==1.0.1
 scipy>=1.10.0

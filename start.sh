@@ -8,3 +8,5 @@ sleep 3
 
 # Start Streamlit frontend (in current terminal)
 (cd frontend && streamlit run app.py)
+
+# bash ./start.sh

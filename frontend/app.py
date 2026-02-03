@@ -27,6 +27,7 @@ from helpers.file_upload import handle_demo_mode, handle_file_upload
 from helpers.generation import show_generation_controls
 from helpers.visualization import show_visualization
 from helpers.validation import show_validation_and_refinement
+from helpers.llm_ui import show_explanation_tab
 # from helpers.roadmap import show_feature_placeholders
 from helpers.eda_feature_eng.expander_data_profiling import expander_data_profiling
 from helpers.eda_feature_eng.expander_correlation import expander_correlation
@@ -90,7 +91,7 @@ def show_eda_and_feature_engineering():
             expander_timeseries_analysis()
     
     elif st.session_state.explore_mode == 'ai':
-        # AI Assistance placeholder UI
+        # AI Assistance UI with LLM pipeline integration
         ai_tab1, ai_tab2, ai_tab3, ai_tab4 = st.tabs([
             "🔍 Explain",
             "🤖 AI Suggestions",
@@ -98,7 +99,9 @@ def show_eda_and_feature_engineering():
             "📄 Summary"
         ])
         with ai_tab1:
-            st.info("🔍 **Explain**: Coming soon - AI-powered explanations of your data patterns and relationships.")
+            # STEP 7: UI Integration - Delegated to helper module
+            show_explanation_tab()
+        
         with ai_tab2:
             st.info("🤖 **AI Suggestions**: Coming soon - Intelligent recommendations for data transformations and feature engineering.")
         with ai_tab3:
