@@ -33,6 +33,7 @@ from src.api.eda_feature_api import router as eda_feature_router
 from src.core.synth.generator import SDVSyntheticGenerator
 from src.core.synth.synthcity_generator import SynthCitySyntheticGenerator
 from src.api.feedback_generate_api import router as feedback_router
+from src.api.llm_api import router as llm_router
 from src.core.synth.model_selection import synthcity_model_comparison, select_best_model, get_memory_usage_mb
 
 from src.core.synth.config import advanced_models, metric_cols
@@ -40,6 +41,7 @@ from src.core.synth.config import advanced_models, metric_cols
 app = FastAPI()
 app.include_router(eda_feature_router)
 app.include_router(feedback_router)
+app.include_router(llm_router)
 
 @app.get("/")
 def home():

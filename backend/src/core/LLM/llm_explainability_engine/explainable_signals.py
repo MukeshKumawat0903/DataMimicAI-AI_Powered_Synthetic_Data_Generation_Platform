@@ -798,9 +798,6 @@ def build_explainable_signals(df: pd.DataFrame, config: Optional[SignalConfig] =
     return extractor.extract(df)
 
 
-
-
-
 # Example usage (for testing purposes only - remove or comment out in production)
 if __name__ == "__main__":
     # Create sample data for testing

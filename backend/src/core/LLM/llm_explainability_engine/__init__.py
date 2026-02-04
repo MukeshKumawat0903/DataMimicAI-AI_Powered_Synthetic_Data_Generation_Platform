@@ -1,10 +1,16 @@
 """
-LLM Module - Utilities for LLM-based data explanations.
-This is a wrapper for the llm_explainability_engine sub-package.
+LLM Explainability Engine - Sub-package for LLM-based data explanations.
+
+This sub-package provides a complete pipeline:
+1. STEP 1 (explainable_signals): Extract all signals from data
+2. STEP 2 (signal_selector): Filter and select focused contexts
+3. STEP 3: (Optional) Retrieve RAG context
+4. STEP 4 (prompt_builder): Build safe, structured prompts for LLM
+5. STEP 5 (llama_inference): Execute LLM inference and return output
+6. STEP 6 (output_validator): Validate and sanitize LLM output
 """
 
-from .llm_explainability_engine import (
-    # STEP 1: Signal extraction
+from .explainable_signals import (
     build_explainable_signals,
     ExplainableSignalsExtractor,
     SignalConfig,
@@ -13,9 +19,10 @@ from .llm_explainability_engine import (
     CategoricalColumnAnalyzer,
     DatetimeColumnAnalyzer,
     TextColumnAnalyzer,
-    CorrelationAnalyzer,
-    
-    # STEP 2: Context selection
+    CorrelationAnalyzer
+)
+
+from .signal_selector import (
     select_explainable_context,
     SignalContextSelector,
     SelectorConfig,
@@ -23,24 +30,27 @@ from .llm_explainability_engine import (
     ColumnAnalysisSelector,
     CorrelationAnalysisSelector,
     OutlierAnalysisSelector,
-    TimeSeriesAnalysisSelector,
-    
-    # STEP 4: Prompt building
+    TimeSeriesAnalysisSelector
+)
+
+from .prompt_builder import (
     build_explanation_prompt,
     ExplanationPromptBuilder,
     PromptConfig,
     SystemPromptBuilder,
     UserPromptBuilder,
-    PromptMetadataBuilder,
-    
-    # STEP 5: LLM inference
+    PromptMetadataBuilder
+)
+
+from .llama_inference import (
     run_llama_explanation,
     LLaMAInferenceEngine,
     GroqInferenceEngine,
     GroqAPIHandler,
-    InferenceConfig,
-    
-    # STEP 6: Output validation
+    InferenceConfig
+)
+
+from .output_validator import (
     validate_llm_output,
     get_validation_report,
     OutputValidator,
@@ -53,6 +63,7 @@ from .llm_explainability_engine import (
 )
 
 __all__ = [
+    # STEP 1: Signal extraction
     'build_explainable_signals',
     'ExplainableSignalsExtractor',
     'SignalConfig',
@@ -62,6 +73,8 @@ __all__ = [
     'DatetimeColumnAnalyzer',
     'TextColumnAnalyzer',
     'CorrelationAnalyzer',
+    
+    # STEP 2: Context selection
     'select_explainable_context',
     'SignalContextSelector',
     'SelectorConfig',
@@ -70,17 +83,23 @@ __all__ = [
     'CorrelationAnalysisSelector',
     'OutlierAnalysisSelector',
     'TimeSeriesAnalysisSelector',
+    
+    # STEP 4: Prompt building
     'build_explanation_prompt',
     'ExplanationPromptBuilder',
     'PromptConfig',
     'SystemPromptBuilder',
     'UserPromptBuilder',
     'PromptMetadataBuilder',
+    
+    # STEP 5: LLM inference
     'run_llama_explanation',
     'LLaMAInferenceEngine',
     'GroqInferenceEngine',
     'GroqAPIHandler',
     'InferenceConfig',
+    
+    # STEP 6: Output validation
     'validate_llm_output',
     'get_validation_report',
     'OutputValidator',
@@ -91,4 +110,3 @@ __all__ = [
     'LanguageSanitizer',
     'NumericExtractor',
 ]
-

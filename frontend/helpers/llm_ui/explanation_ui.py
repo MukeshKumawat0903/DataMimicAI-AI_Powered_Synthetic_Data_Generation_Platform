@@ -2,15 +2,21 @@
 Explanation UI - STEP 7: UI Integration for LLM Pipeline.
 
 This module provides the Streamlit UI for AI-powered data explanations.
-It orchestrates the full LLM pipeline (STEP 1-6) and displays results.
+It connects to the FastAPI LLM endpoint to generate explanations.
 
 Author: DataMimicAI Team
 Date: February 2026
 """
 
 import streamlit as st
-import sys
-from pathlib import Path
+import requests
+import os
+import frontend_config as config
+
+
+def get_api_base():
+    """Return per-session override or configured API base."""
+    return st.session_state.get('custom_api') or os.getenv("API_URL") or config.API_BASE
 
 
 def show_explanation_tab():
@@ -96,119 +102,105 @@ def show_explanation_tab():
 
 def _run_llm_pipeline(current_file_id: str):
     """
-    Execute the complete LLM pipeline and display results.
-    
-    Pipeline Steps:
-    1. STEP 1: Extract explainable signals
-    2. STEP 2: Select scoped context
-    3. STEP 4: Build safe prompt
-    4. STEP 5: Run LLaMA inference
-    5. STEP 6: Validate output
+    Execute the LLM pipeline via FastAPI endpoint.
     
     Parameters
     ----------
     current_file_id : str
-        Current dataset identifier for caching
+        Current dataset identifier for the API call
     """
     with st.spinner("🤖 Analyzing your data... This may take 10-30 seconds."):
         try:
-            # Add backend to Python path for imports
-            backend_src_path = Path(__file__).parent.parent.parent.parent / "backend" / "src"
-            backend_src_path = backend_src_path.resolve()
+            # Get API base URL
+            api_base = get_api_base()
             
-            if backend_src_path not in sys.path:
-                sys.path.insert(0, str(backend_src_path))
+            # Prepare request payload
+            payload = {
+                "file_id": current_file_id,
+                "scope": "dataset_overview",
+                "tone": "clear",
+                "max_tokens": 1500
+            }
             
-            # Import LLM pipeline components
-            from core.LLM import (
-                build_explainable_signals,
-                select_explainable_context,
-                build_explanation_prompt,
-                run_llama_explanation,
-                validate_llm_output,
-                get_validation_report
+            # Call LLM API endpoint
+            response = requests.post(
+                f"{api_base}/llm/explain",
+                json=payload,
+                timeout=60
             )
             
-            # STEP 1: Extract explainable signals from data
-            # This computes all deterministic statistics
-            signals = build_explainable_signals(st.session_state.df)
-            
-            # STEP 2: Scope and filter signals for focused context
-            # Using dataset_overview scope for general explanation
-            context = select_explainable_context(
-                signals, 
-                scope="dataset_overview"
-            )
-            
-            # STEP 4: Build safe prompt with constraints
-            # Ensures LLM cannot invent statistics
-            prompt = build_explanation_prompt(
-                context, 
-                tone="clear"
-            )
-            
-            # STEP 5: Run LLaMA inference via Groq
-            # This is the ONLY step that calls external API
-            # Use max_tokens=1500 to ensure all sections are generated
-            raw_explanation = run_llama_explanation(
-                prompt,
-                max_tokens=1500
-            )
-            
-            # Store raw explanation for debugging
-            st.session_state.raw_llm_explanation = raw_explanation
-            
-            # STEP 6: Validate output against source facts
-            # This prevents hallucinations from reaching users
-            # Critical safety layer - all numbers must match computed facts
-            validated_explanation = validate_llm_output(
-                raw_explanation, 
-                context,
-                max_length=3000
-            )
-            
-            # Get validation report for debugging
-            validation_report = get_validation_report(raw_explanation, context)
-            st.session_state.validation_report = validation_report
-            
-            # Cache the explanation for this dataset
-            st.session_state.llm_explanation = validated_explanation
-            st.session_state.llm_explanation_file_id = current_file_id
-            
-            # Check if this is the fallback message (validation failed)
-            fallback_msg = "The analysis highlights notable patterns in the data, but the explanation could not be confidently validated."
-            is_fallback = validated_explanation.strip() == fallback_msg
-            
-            # Display the result
-            if is_fallback:
-                st.warning("⚠️ Explanation generated, but validation checks failed.")
-                st.markdown("---")
+            # Handle response
+            if response.status_code == 200:
+                data = response.json()
                 
-                # Show the raw LLM output with warning
-                with st.expander("🔍 View Generated Explanation (Unvalidated)", expanded=True):
-                    st.markdown(raw_explanation)
-                    st.caption("⚠️ This output failed validation checks. Some statistics may not match your data.")
+                # Extract response data
+                validated_explanation = data.get("explanation", "")
+                is_validated = data.get("validated", False)
+                validation_report = data.get("validation_report", {})
+                metadata = data.get("metadata", {})
                 
-                # Show validation details
-                with st.expander("🔬 Validation Details"):
-                    st.json(validation_report)
-                    st.caption("💡 The LLM may have included numbers not present in your dataset.")
+                # Store in session state
+                st.session_state.llm_explanation = validated_explanation
+                st.session_state.llm_explanation_file_id = current_file_id
+                st.session_state.validation_report = validation_report
                 
-                st.markdown("---")
+                # Check if validation failed (fallback message)
+                fallback_msg = "The analysis highlights notable patterns in the data, but the explanation could not be confidently validated."
+                is_fallback = validated_explanation.strip() == fallback_msg
+                
+                # Display the result
+                if is_fallback or not is_validated:
+                    st.warning("⚠️ Explanation generated, but validation checks failed.")
+                    st.markdown("---")
+                    
+                    # Show the explanation with warning
+                    with st.expander("🔍 View Generated Explanation (Unvalidated)", expanded=True):
+                        st.markdown(validated_explanation)
+                        st.caption("⚠️ This output failed validation checks. Some statistics may not match your data.")
+                    
+                    # Show validation details
+                    with st.expander("🔬 Validation Details"):
+                        st.json(validation_report)
+                        st.caption("💡 The LLM may have included numbers not present in your dataset.")
+                    
+                    st.markdown("---")
+                else:
+                    st.success("✅ Explanation generated successfully!")
+                    st.markdown("---")
+                    st.markdown(validated_explanation)
+                    st.markdown("---")
+                    st.caption("💡 This explanation is based on computed statistics from your data.")
+                    
+                    # Show metadata in expander
+                    with st.expander("ℹ️ Generation Details"):
+                        st.json(metadata)
+                
+            elif response.status_code == 404:
+                st.error("❌ Dataset not found. Please upload your data again.")
+                st.session_state.llm_explanation = None
+                
+            elif response.status_code == 400:
+                error_detail = response.json().get("detail", "Invalid request parameters")
+                st.error(f"❌ {error_detail}")
+                st.session_state.llm_explanation = None
+                
             else:
-                st.success("✅ Explanation generated successfully!")
-                st.markdown("---")
-                st.markdown(validated_explanation)
-                st.markdown("---")
-                st.caption("💡 This explanation is based on computed statistics from your data.")
+                error_detail = response.json().get("detail", "Unknown error")
+                st.error(f"❌ Failed to generate explanation: {error_detail}")
+                st.session_state.llm_explanation = None
+                
+        except requests.exceptions.Timeout:
+            st.error("❌ Request timed out. The analysis is taking too long. Please try again.")
+            st.session_state.llm_explanation = None
             
-        except ImportError as e:
-            st.error(f"❌ LLM pipeline not available: {str(e)}")
-            st.info("💡 Make sure the backend LLM modules are properly installed.")
+        except requests.exceptions.ConnectionError:
+            st.error("❌ Could not connect to the backend API. Make sure the server is running.")
+            st.info(f"💡 Trying to connect to: {get_api_base()}")
+            st.session_state.llm_explanation = None
+            
         except Exception as e:
             st.error("❌ Failed to generate explanation. Please try again.")
             st.caption(f"Error: {str(e)}")
-            # Reset cached explanation on error
             st.session_state.llm_explanation = None
             
             # Show detailed traceback for debugging
@@ -235,7 +227,22 @@ def _show_pipeline_info():
         - If validation fails, a safe fallback message is shown instead
         
         **Privacy & Security:**
-        - Your data is processed locally for statistics
+        - Your data file is processed by the backend API
         - Only anonymized statistics are sent to the AI (never raw data)
-        - Requires GROQ_API_KEY in .env file
+        - Requires GROQ_API_KEY in backend .env file
+        
+        **API Endpoint:**
+        - Using: `{get_api_base()}/llm/explain`
         """)
+        
+        # Show available scopes
+        st.markdown("**Available Analysis Scopes:**")
+        try:
+            api_base = get_api_base()
+            response = requests.get(f"{api_base}/llm/scopes", timeout=5)
+            if response.status_code == 200:
+                scopes_data = response.json()
+                for scope, info in scopes_data.get("scopes", {}).items():
+                    st.markdown(f"- **{scope}**: {info['description']}")
+        except:
+            st.caption("_Could not load available scopes_")
