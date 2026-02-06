@@ -21,8 +21,23 @@ from src.core.LLM import (
     build_explanation_prompt,
     run_llama_explanation,
     validate_llm_output,
-    get_validation_report
+    get_validation_report,
+    build_diagnostics,
+    build_diagnostics_context_for_prompt
 )
+
+# Baseline guard for protecting existing behavior
+try:
+    from src.core.LLM.llm_explainability_engine.baseline_guard import (
+        assert_signals_structure,
+        assert_context_matches_signals,
+        enable_baseline_guard,
+        is_baseline_guard_enabled
+    )
+    _baseline_guard_available = True
+except ImportError:
+    _baseline_guard_available = False
+    logger.warning("Baseline guard not available - skipping guard checks")
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +70,7 @@ class ExplanationRequest(BaseModel):
     file_id: str = Field(..., description="File identifier for the uploaded dataset")
     scope: str = Field(
         default="dataset_overview",
-        description="Analysis scope (dataset_overview, column_analysis, correlation_analysis, outlier_analysis, time_series_analysis)"
+        description="Analysis scope (diagnostics_overview, dataset_overview, column_analysis, correlation_analysis, outlier_analysis, time_series_analysis)"
     )
     tone: str = Field(
         default="clear",
@@ -68,6 +83,10 @@ class ExplanationRequest(BaseModel):
     max_tokens: int = Field(
         default=1500,
         description="Maximum tokens for LLM generation"
+    )
+    use_rag: bool = Field(
+        default=False,
+        description="Whether to augment explanation with RAG knowledge (optional)"
     )
 
 
@@ -122,6 +141,7 @@ async def generate_explanation(request: ExplanationRequest = Body(...)):
         
         # Validate scope
         valid_scopes = [
+            "diagnostics_overview",
             "dataset_overview",
             "column_analysis",
             "correlation_analysis",
@@ -146,6 +166,15 @@ async def generate_explanation(request: ExplanationRequest = Body(...)):
         logger.info("STEP 1: Extracting explainable signals")
         try:
             signals = build_explainable_signals(df)
+            
+            # BASELINE GUARD: Validate signals structure at API level
+            # This is an additional safety check on top of internal guards
+            if _baseline_guard_available and is_baseline_guard_enabled():
+                try:
+                    assert_signals_structure(signals)
+                    logger.debug("[BASELINE] API-level signals validation passed")
+                except Exception as e:
+                    logger.warning(f"[BASELINE] API-level signals validation failed: {e}")
         except Exception as e:
             logger.error(f"Error in signal extraction: {str(e)}")
             raise HTTPException(
@@ -153,25 +182,67 @@ async def generate_explanation(request: ExplanationRequest = Body(...)):
                 detail=f"Error extracting signals: {str(e)}"
             )
         
-        # STEP 2: Select scoped context
-        logger.info(f"STEP 2: Selecting context for scope={request.scope}")
+        # STEP 1.5: Build diagnostics from signals
+        logger.info("STEP 1.5: Building diagnostics from signals")
         try:
-            context_params = {"signals": signals, "scope": request.scope}
-            if request.columns and request.scope == "column_analysis":
-                context_params["columns"] = request.columns
-            
-            context = select_explainable_context(**context_params)
+            # Apply column filtering if specified by user
+            target_columns = request.columns if request.columns else None
+            diagnostics = build_diagnostics(signals, target_columns=target_columns)
+            logger.debug(f"Built diagnostics with {diagnostics['summary']['total_issues']} issues")
         except Exception as e:
-            logger.error(f"Error in context selection: {str(e)}")
+            logger.error(f"Error in diagnostics building: {str(e)}")
             raise HTTPException(
                 status_code=500,
-                detail=f"Error selecting context: {str(e)}"
+                detail=f"Error building diagnostics: {str(e)}"
             )
         
-        # STEP 4: Build prompt
-        logger.info(f"STEP 4: Building prompt with tone={request.tone}")
+        # STEP 2: Build context from diagnostics (NEW ARCHITECTURE)
+        # The Explain feature now consumes structured diagnostics instead of raw signals
+        logger.info("STEP 2: Building context from diagnostics")
         try:
-            prompt = build_explanation_prompt(context, tone=request.tone)
+            # Pass scope to maintain user's analysis intent
+            context = build_diagnostics_context_for_prompt(diagnostics, scope=request.scope)
+            
+            # BASELINE GUARD: Validate context matches signals at API level
+            # This ensures end-to-end data flow consistency
+            if _baseline_guard_available and is_baseline_guard_enabled():
+                try:
+                    assert_context_matches_signals(context, signals)
+                    logger.debug("[BASELINE] API-level context validation passed")
+                except Exception as e:
+                    logger.warning(f"[BASELINE] API-level context validation failed: {e}")
+        except Exception as e:
+            logger.error(f"Error in context building: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error building context: {str(e)}"
+            )
+        
+        # STEP 3 (Optional): Retrieve RAG knowledge if requested
+        rag_context = None
+        if request.use_rag:
+            logger.info("STEP 3: Retrieving RAG knowledge for diagnostics")
+            try:
+                from src.core.LLM.rag import augment_diagnostics_with_rules
+                
+                # Augment diagnostics with relevant knowledge rules
+                diagnostics_with_rag = augment_diagnostics_with_rules(diagnostics)
+                rag_context = diagnostics_with_rag.get("rag_context")
+                
+                if rag_context:
+                    total_rules = rag_context["retrieval_metadata"]["total_rules_retrieved"]
+                    logger.info(f"Retrieved {total_rules} relevant knowledge rules")
+                else:
+                    logger.warning("RAG requested but no rules retrieved")
+            except Exception as e:
+                # RAG is optional - continue without it if it fails
+                logger.warning(f"RAG retrieval failed (continuing without RAG): {str(e)}")
+                rag_context = None
+        
+        # STEP 4: Build prompt (with optional RAG context)
+        logger.info(f"STEP 4: Building prompt with tone={request.tone}, use_rag={request.use_rag}")
+        try:
+            prompt = build_explanation_prompt(context, rag_context=rag_context, tone=request.tone)
         except Exception as e:
             logger.error(f"Error in prompt building: {str(e)}")
             raise HTTPException(
@@ -215,19 +286,30 @@ async def generate_explanation(request: ExplanationRequest = Body(...)):
         
         logger.info(f"Pipeline completed. Validated: {is_validated}")
         
+        response_metadata = {
+            "file_id": request.file_id,
+            "scope": context.get("scope", "diagnostics_overview"),
+            "tone": request.tone,
+            "num_rows": len(df),
+            "num_columns": len(df.columns),
+            "num_columns_analyzed": diagnostics["metadata"].get("num_columns_analyzed", 0),
+            "total_issues_detected": diagnostics["summary"]["total_issues"],
+            "high_severity_issues": diagnostics["summary"]["high_severity_count"],
+            "medium_severity_issues": diagnostics["summary"]["medium_severity_count"],
+            "low_severity_issues": diagnostics["summary"]["low_severity_count"],
+            "raw_explanation_length": len(raw_explanation),
+            "validated_explanation_length": len(validated_explanation)
+        }
+        
+        # Include baseline guard status if available
+        if _baseline_guard_available:
+            response_metadata["baseline_guard_enabled"] = is_baseline_guard_enabled()
+        
         return ExplanationResponse(
             explanation=validated_explanation,
             validated=is_validated,
             validation_report=validation_report,
-            metadata={
-                "file_id": request.file_id,
-                "scope": request.scope,
-                "tone": request.tone,
-                "num_rows": len(df),
-                "num_columns": len(df.columns),
-                "raw_explanation_length": len(raw_explanation),
-                "validated_explanation_length": len(validated_explanation)
-            }
+            metadata=response_metadata
         )
         
     except HTTPException:

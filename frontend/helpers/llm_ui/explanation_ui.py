@@ -1,8 +1,8 @@
 """
-Explanation UI - STEP 7: UI Integration for LLM Pipeline.
+Diagnostics UI - STEP 7: UI Integration for LLM Pipeline.
 
-This module provides the Streamlit UI for AI-powered data explanations.
-It connects to the FastAPI LLM endpoint to generate explanations.
+This module provides the Streamlit UI for AI-powered data diagnostics.
+It connects to the FastAPI LLM endpoint to generate diagnostic explanations.
 
 Author: DataMimicAI Team
 Date: February 2026
@@ -21,27 +21,27 @@ def get_api_base():
 
 def show_explanation_tab():
     """
-    Display the AI Explanation tab UI and handle pipeline execution (STEP 7).
+    Display the AI Diagnostics tab UI and handle pipeline execution (STEP 7).
     
     This is a PRESENTATION LAYER that:
-    - Provides UI for triggering explanation generation
+    - Provides UI for triggering diagnostic analysis
     - Orchestrates STEP 1-6 pipeline
-    - Displays validated explanations
+    - Displays validated diagnostics (read-only, no recommendations)
     - Manages caching and state
     
     All intelligence happens in STEPS 1-6. This function only presents results.
     """
     # STEP 7: UI Integration - Connect full LLM pipeline to Streamlit
-    st.markdown("### 🔍 AI-Powered Data Explanation")
+    st.markdown("### 🔍 AI-Powered Data Diagnostics")
     st.markdown("""
-    Get intelligent, natural language explanations of your dataset's key characteristics, 
-    patterns, and statistical properties. The AI analyzes your data and provides clear 
-    insights grounded in computed facts.
+    Get intelligent, natural language diagnostics of your dataset's key characteristics, 
+    patterns, and detected issues. The AI analyzes your data and provides clear, 
+    read-only insights grounded in computed facts. No recommendations or actions included.
     """)
     
     # Check if data is available
     if not hasattr(st.session_state, 'df') or st.session_state.df is None or st.session_state.df.empty:
-        st.warning("⚠️ Please upload or load a dataset first to generate explanations.")
+        st.warning("⚠️ Please upload or load a dataset first to generate diagnostics.")
         return
     
     # Initialize session state for caching explanations
@@ -87,10 +87,10 @@ def show_explanation_tab():
             st.markdown(st.session_state.llm_explanation)
             st.markdown("---")
         
-        st.caption("💡 Click 'Generate New Explanation' to refresh with updated data.")
+        st.caption("💡 Click 'Generate New Diagnostics' to refresh with updated data.")
     
     # Button to trigger explanation generation
-    button_label = "Generate New Explanation" if has_cached_explanation else "Generate Explanation"
+    button_label = "Generate New Diagnostics" if has_cached_explanation else "Generate Diagnostics"
     
     if st.button(button_label, type="primary", use_container_width=True):
         # Run the full LLM pipeline (STEP 1 → 6)
@@ -114,12 +114,13 @@ def _run_llm_pipeline(current_file_id: str):
             # Get API base URL
             api_base = get_api_base()
             
-            # Prepare request payload
+            # Prepare request payload for diagnostics-driven explain
             payload = {
                 "file_id": current_file_id,
-                "scope": "dataset_overview",
+                "scope": "diagnostics_overview",  # Uses diagnostics_overview (no recommendations)
                 "tone": "clear",
-                "max_tokens": 1500
+                "max_tokens": 1500,
+                "use_rag": False  # Optional: Enable RAG knowledge augmentation
             }
             
             # Call LLM API endpoint
@@ -165,11 +166,11 @@ def _run_llm_pipeline(current_file_id: str):
                     
                     st.markdown("---")
                 else:
-                    st.success("✅ Explanation generated successfully!")
+                    st.success("✅ Diagnostics generated successfully!")
                     st.markdown("---")
                     st.markdown(validated_explanation)
                     st.markdown("---")
-                    st.caption("💡 This explanation is based on computed statistics from your data.")
+                    st.caption("💡 This diagnostics report is based on automated analysis of your data.")
                     
                     # Show metadata in expander
                     with st.expander("ℹ️ Generation Details"):
@@ -186,7 +187,7 @@ def _run_llm_pipeline(current_file_id: str):
                 
             else:
                 error_detail = response.json().get("detail", "Unknown error")
-                st.error(f"❌ Failed to generate explanation: {error_detail}")
+                st.error(f"❌ Failed to generate diagnostics: {error_detail}")
                 st.session_state.llm_explanation = None
                 
         except requests.exceptions.Timeout:
@@ -199,7 +200,7 @@ def _run_llm_pipeline(current_file_id: str):
             st.session_state.llm_explanation = None
             
         except Exception as e:
-            st.error("❌ Failed to generate explanation. Please try again.")
+            st.error("❌ Failed to generate diagnostics. Please try again.")
             st.caption(f"Error: {str(e)}")
             st.session_state.llm_explanation = None
             
@@ -213,17 +214,17 @@ def _show_pipeline_info():
     """Display information about how the pipeline works."""
     with st.expander("ℹ️ How does this work?"):
         st.markdown("""
-        **The AI Explanation Pipeline:**
+        **The AI Diagnostics Pipeline:**
         
         1. **Signal Extraction**: Analyzes your data and computes statistical properties
-        2. **Context Selection**: Focuses on the most relevant insights for explanation
-        3. **Prompt Building**: Creates a structured prompt with safety constraints
-        4. **LLM Inference**: Uses Groq's LLaMA model to generate natural language
+        2. **Diagnostics Building**: Classifies issues and assigns severity levels
+        3. **Prompt Building**: Creates a structured prompt for diagnostics narration
+        4. **LLM Inference**: Uses Groq's LLaMA model to generate natural language diagnostics
         5. **Validation**: Verifies all claims against computed facts (hallucination control)
         
         **Why validation matters:**
         - LLMs can sometimes invent plausible-sounding statistics
-        - Every number in the explanation is verified against your actual data
+        - Every number in the diagnostics is verified against your actual data
         - If validation fails, a safe fallback message is shown instead
         
         **Privacy & Security:**

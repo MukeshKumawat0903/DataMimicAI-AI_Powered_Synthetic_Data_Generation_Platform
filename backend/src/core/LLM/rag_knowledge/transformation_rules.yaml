@@ -1,0 +1,54 @@
+# Transformation Rules - System Knowledge for Data Transformation Patterns
+# These rules explain common transformation scenarios and their implications.
+# NO recommendations or actions - only factual explanations.
+
+rules:
+  - rule_id: transform_001
+    issue_type: high_skew
+    condition: "Numeric column with skewness > 2.0"
+    explanation: "Highly skewed numeric distributions often contain a concentration of small values with a few very large values. This pattern is common in financial data, event counts, and natural phenomena following power law distributions."
+
+  - rule_id: transform_002
+    issue_type: missing_values
+    condition: "Systematic missingness pattern detected"
+    explanation: "Missing values that follow a pattern (e.g., always missing together, missing based on other column values) indicate Missing Not At Random (MNAR) or Missing At Random (MAR) mechanisms rather than random absence."
+
+  - rule_id: transform_003
+    issue_type: outliers
+    condition: "Outliers concentrated in specific ranges"
+    explanation: "When outliers cluster in specific value ranges rather than being randomly distributed, they may represent valid subpopulations, measurement artifacts, or systematic data entry issues."
+
+  - rule_id: transform_004
+    issue_type: imbalance
+    condition: "Binary categorical with extreme imbalance"
+    explanation: "Binary categories with extreme imbalance (e.g., 95%/5%) are common in rare event detection, fraud detection, and disease diagnosis scenarios where the positive class is inherently rare."
+
+  - rule_id: transform_005
+    issue_type: high_cardinality
+    condition: "Categorical column with cardinality approaching row count"
+    explanation: "When unique values approach the number of rows, the column likely represents identifiers, timestamps, or other fields not intended for categorical analysis."
+
+  - rule_id: transform_006
+    issue_type: high_correlation
+    condition: "Multiple features highly correlated with target"
+    explanation: "When several features show high correlation with a target variable, they may be capturing similar aspects of the underlying phenomenon or may include data leakage from future information."
+
+  - rule_id: transform_007
+    issue_type: data_type_mismatch
+    condition: "Numeric values stored as text"
+    explanation: "Numeric data stored in string format prevents mathematical operations and statistical analysis. This often occurs during data import or when systems store all values as text by default."
+
+  - rule_id: transform_008
+    issue_type: date_format_inconsistency
+    condition: "Multiple date formats in same column"
+    explanation: "Inconsistent date formats (e.g., MM/DD/YYYY and DD/MM/YYYY mixed) create ambiguity and parsing errors. This often results from merging data from different sources or systems."
+
+  - rule_id: transform_009
+    issue_type: unit_inconsistency
+    condition: "Mixed units in numeric column"
+    explanation: "Numeric values with mixed units (e.g., meters and feet, dollars and euros) create invalid statistical comparisons. This typically occurs when combining data from different measurement systems or currencies."
+
+  - rule_id: transform_010
+    issue_type: encoding_issue
+    condition: "Non-standard character encoding detected"
+    explanation: "Character encoding mismatches produce garbled text with special characters. This occurs when data is saved in one encoding (e.g., UTF-8) but read with another (e.g., ASCII)."

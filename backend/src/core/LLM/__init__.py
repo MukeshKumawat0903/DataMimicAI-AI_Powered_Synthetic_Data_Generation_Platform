@@ -15,6 +15,10 @@ from .llm_explainability_engine import (
     TextColumnAnalyzer,
     CorrelationAnalyzer,
     
+    # STEP 1.5: Diagnostics building
+    build_diagnostics,
+    DiagnosticsThresholds,
+    
     # STEP 2: Context selection
     select_explainable_context,
     SignalContextSelector,
@@ -24,6 +28,10 @@ from .llm_explainability_engine import (
     CorrelationAnalysisSelector,
     OutlierAnalysisSelector,
     TimeSeriesAnalysisSelector,
+    
+    # STEP 3: Diagnostics formatting for explanation
+    build_diagnostics_context_for_prompt,
+    format_diagnostics_for_explanation,
     
     # STEP 4: Prompt building
     build_explanation_prompt,
@@ -62,6 +70,8 @@ __all__ = [
     'DatetimeColumnAnalyzer',
     'TextColumnAnalyzer',
     'CorrelationAnalyzer',
+    'build_diagnostics',
+    'DiagnosticsThresholds',
     'select_explainable_context',
     'SignalContextSelector',
     'SelectorConfig',
@@ -70,6 +80,8 @@ __all__ = [
     'CorrelationAnalysisSelector',
     'OutlierAnalysisSelector',
     'TimeSeriesAnalysisSelector',
+    'build_diagnostics_context_for_prompt',
+    'format_diagnostics_for_explanation',
     'build_explanation_prompt',
     'ExplanationPromptBuilder',
     'PromptConfig',

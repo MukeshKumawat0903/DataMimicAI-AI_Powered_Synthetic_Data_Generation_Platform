@@ -126,6 +126,13 @@ class SystemPromptBuilder:
     def _get_scope_guidance(self, scope: str) -> str:
         """Get guidance specific to the analysis scope."""
         scope_guidance = {
+            "diagnostics_overview": (
+                "SCOPE: You are explaining detected data quality issues from structured diagnostics. "
+                "You must ONLY summarize the issues provided, reference their severity levels, and "
+                "describe their business/modeling implications. You must NOT suggest fixes, recommend "
+                "transformations, or rank issues by priority. All interpretation logic has already "
+                "been done by the diagnostics system."
+            ),
             "dataset_overview": (
                 "SCOPE: You are explaining high-level dataset characteristics. Focus on overall "
                 "data quality, size considerations, and general patterns. Highlight any red flags "
@@ -194,14 +201,22 @@ class UserPromptBuilder:
         if rag_context:
             prompt_parts.append("\n\n" + self._format_rag_context(rag_context))
         
-        # Output expectations
-        prompt_parts.append("\n\n" + self._get_output_expectations())
+        # Output expectations (scope-aware)
+        scope = scoped_context.get("scope", "")
+        prompt_parts.append("\n\n" + self._get_output_expectations(scope))
         
         return "".join(prompt_parts).strip()
     
     def _get_task_instruction(self, scope: str) -> str:
         """Generate task instruction based on scope."""
         task_instructions = {
+            "diagnostics_overview": (
+                "Please explain the detected data quality issues from the structured diagnostics provided. "
+                "Your role is to summarize what issues were detected, reference their severity classifications, "
+                "and describe why these issues matter for business analysis and modeling. You must NOT suggest "
+                "fixes, recommend specific transformations, or prioritize which issues to address first. All "
+                "classification and severity assessment has already been performed."
+            ),
             "dataset_overview": (
                 "Please provide a comprehensive explanation of the overall dataset characteristics. "
                 "Analyze the data quality, size, and composition. Identify any immediate concerns "
@@ -274,8 +289,27 @@ class UserPromptBuilder:
         lines.append("\n--- END OF FACTS ---")
         return "\n".join(lines)
     
-    def _format_rag_context(self, rag_context: str) -> str:
-        """Format RAG context for inclusion in prompt."""
+    def _format_rag_context(self, rag_context) -> str:
+        """
+        Format RAG context for inclusion in prompt.
+        
+        Supports both string and structured rule dictionary formats.
+        
+        Parameters
+        ----------
+        rag_context : str or dict
+            Either plain text or structured RAG rules from retriever
+        
+        Returns
+        -------
+        str
+            Formatted RAG context section
+        """
+        # Handle structured RAG rules (from retriever)
+        if isinstance(rag_context, dict) and "rules_by_diagnostic" in rag_context:
+            return self._format_structured_rag_rules(rag_context)
+        
+        # Handle plain text RAG (legacy/simple format)
         return (
             "--- REFERENCE KNOWLEDGE ---\n"
             f"{rag_context}\n"
@@ -284,54 +318,165 @@ class UserPromptBuilder:
             "but always prioritize explaining the specific facts provided above."
         )
     
-    def _get_output_expectations(self) -> str:
-        """Define what output format is expected."""
-        return (
-            "--- OUTPUT REQUIREMENTS ---\n"
-            "Please structure your explanation with these distinct sections:\n\n"
+    def _format_structured_rag_rules(self, rag_context: Dict[str, Any]) -> str:
+        """
+        Format structured RAG rules from retriever.
+        
+        Parameters
+        ----------
+        rag_context : dict
+            Output from augment_diagnostics_with_rules() with structure:
+            {
+                "rules_by_diagnostic": {idx: [rules]},
+                "retrieval_metadata": {...}
+            }
+        
+        Returns
+        -------
+        str
+            Formatted RAG rules section
+        """
+        rules_by_diag = rag_context.get("rules_by_diagnostic", {})
+        metadata = rag_context.get("retrieval_metadata", {})
+        
+        if not rules_by_diag:
+            return ""
+        
+        # Collect all unique rules (avoid duplicates)
+        seen_rule_ids = set()
+        unique_rules = []
+        
+        for diagnostic_idx, rules in rules_by_diag.items():
+            for rule in rules:
+                rule_id = rule.get("rule_id")
+                if rule_id and rule_id not in seen_rule_ids:
+                    seen_rule_ids.add(rule_id)
+                    unique_rules.append(rule)
+        
+        if not unique_rules:
+            return ""
+        
+        # Build formatted output
+        lines = [
+            "--- SYSTEM KNOWLEDGE: Data Quality Patterns ---",
+            f"Retrieved {len(unique_rules)} relevant knowledge rules to support your explanation.",
+            "These rules provide context about what each issue type means and why it matters.",
+            "Reference these explanations when describing the detected issues, but always cite the specific metrics from the facts above.\n"
+        ]
+        
+        for rule in unique_rules:
+            issue_type = rule.get("issue_type", "unknown")
+            condition = rule.get("condition", "")
+            explanation = rule.get("explanation", "")
             
-            "## Step 1: KEY FINDINGS\n"
-            "Write a SHORT, executive-style summary using bullet points:\n"
-            "- Dataset size and readiness for modeling or synthetic generation\n"
-            "- Overall data quality status\n"
-            "- Major risks (missingness, outliers, skewness)\n"
-            "- One high-level recommendation\n"
-            "Keep this section concise (3-5 bullet points maximum).\n\n"
-            
-            "## Step 2: DETAILED ANALYSIS\n"
-            "Provide deeper analysis WITHOUT repeating dataset size or memory usage.\n"
-            "Use bullet points (like Step 1) and cover:\n"
-            "- Distribution issues (skewness, heavy tails, non-normality)\n"
-            "- Missingness patterns and likely impact\n"
-            "- Outlier presence and practical implications\n"
-            "Keep bullets factual and grounded in the provided numbers.\n\n"
-            
-            "## Step 3: WHY THIS MATTERS\n"
-            "Explain practical impact using bullet points (like Step 1):\n"
-            "- How missing values or outliers could affect model training\n"
-            "- What distribution issues mean for synthetic data generation\n"
-            "- Which preprocessing steps would improve data quality\n"
-            "Keep language neutral (use 'may', 'could', 'likely' instead of absolutes).\n"
-            "Do NOT introduce new numbers or new findings—only interpret existing facts.\n\n"
-            
-            "## Step 4: RECOMMENDATIONS\n"
-            "Provide 2–3 complete, actionable bullet points.\n"
-            "Ensure each bullet is a full sentence and fully written (no incomplete items).\n"
-            "This section MUST be present and use bullet points like Step 1.\n\n"
-
-            "## Trust Note\n"
-            "End with this exact sentence on its own line:\n"
-            "This explanation is based on computed statistics from your data.\n\n"
-            
-            "CRITICAL RULES:\n"
-            "- Reference specific values from the provided facts\n"
-            "- Do NOT compute, calculate, or invent any new numbers\n"
-            "- Do NOT introduce facts not present in the provided statistics\n"
-            "- Use bullet points in KEY FINDINGS\n"
-            "- Use short paragraphs in other sections\n"
-            "- Avoid overconfident language (no 'guarantees', 'always', 'never')\n"
-            "- Focus on actionable insights, not just descriptions"
+            lines.append(f"Issue Type: {issue_type}")
+            lines.append(f"  Condition: {condition}")
+            lines.append(f"  Explanation: {explanation}")
+            lines.append("")  # Blank line between rules
+        
+        lines.append("--- END OF SYSTEM KNOWLEDGE ---\n")
+        lines.append(
+            "IMPORTANT: Use these knowledge explanations to enrich your description of detected issues, "
+            "but do NOT repeat the conditions verbatim. Instead, integrate this knowledge naturally "
+            "when explaining what the specific metric values from the facts mean in practice."
         )
+        
+        return "\n".join(lines)
+    
+    def _get_output_expectations(self, scope: str = "") -> str:
+        """Define what output format is expected based on scope."""
+        if scope == "diagnostics_overview":
+            return (
+                "--- OUTPUT REQUIREMENTS ---\n"
+                "Please structure your explanation with these EXACT sections ONLY:\n\n"
+                
+                "## Dataset Overview\n"
+                "Provide a brief summary (2-3 sentences) of:\n"
+                "- Number of columns analyzed\n"
+                "- Overall data quality status\n"
+                "Do NOT add recommendations or interpretations here.\n\n"
+                
+                "## Detected Issues\n"
+                "List each detected issue with:\n"
+                "- Issue type (e.g., high_skew, missing_values, outliers)\n"
+                "- Affected column(s)\n"
+                "- Metric name and value\n"
+                "- Severity level (high/medium/low)\n"
+                "Use bullet points. Do NOT suggest fixes or actions.\n\n"
+                
+                "## Severity Summary\n"
+                "Provide a count-based summary:\n"
+                "- Total issues detected\n"
+                "- Breakdown by severity (high, medium, low)\n"
+                "- Breakdown by issue type\n"
+                "Keep this factual and quantitative.\n\n"
+                
+                "## Implications\n"
+                "Describe the potential business and modeling impacts:\n"
+                "- How these issues might affect model training\n"
+                "- What these patterns mean for data quality\n"
+                "- General considerations for data preparation\n"
+                "Use neutral language (may, could, likely). Do NOT suggest specific fixes.\n\n"
+
+                "## Trust Note\n"
+                "End with this exact sentence on its own line:\n"
+                "This explanation is based on automated diagnostic analysis of your data.\n\n"
+                
+                "CRITICAL RULES:\n"
+                "- Reference specific issue_type, metric_name, metric_value, and severity from the facts\n"
+                "- Do NOT suggest fixes, transformations, or recommendations\n"
+                "- Do NOT prioritize or rank issues\n"
+                "- Do NOT compute or invent any new numbers\n"
+                "- Use ONLY the four sections above (no 'Recommendations' or 'Next Steps')\n"
+                "- Keep language descriptive, not prescriptive"
+            )
+        else:
+            return (
+                "--- OUTPUT REQUIREMENTS ---\n"
+                "Please structure your explanation with these distinct sections:\n\n"
+                
+                "## Step 1: KEY FINDINGS\n"
+                "Write a SHORT, executive-style summary using bullet points:\n"
+                "- Dataset size and readiness for modeling or synthetic generation\n"
+                "- Overall data quality status\n"
+                "- Major risks (missingness, outliers, skewness)\n"
+                "- One high-level recommendation\n"
+                "Keep this section concise (3-5 bullet points maximum).\n\n"
+                
+                "## Step 2: DETAILED ANALYSIS\n"
+                "Provide deeper analysis WITHOUT repeating dataset size or memory usage.\n"
+                "Use bullet points (like Step 1) and cover:\n"
+                "- Distribution issues (skewness, heavy tails, non-normality)\n"
+                "- Missingness patterns and likely impact\n"
+                "- Outlier presence and practical implications\n"
+                "Keep bullets factual and grounded in the provided numbers.\n\n"
+                
+                "## Step 3: WHY THIS MATTERS\n"
+                "Explain practical impact using bullet points (like Step 1):\n"
+                "- How missing values or outliers could affect model training\n"
+                "- What distribution issues mean for synthetic data generation\n"
+                "- Which preprocessing steps would improve data quality\n"
+                "Keep language neutral (use 'may', 'could', 'likely' instead of absolutes).\n"
+                "Do NOT introduce new numbers or new findings—only interpret existing facts.\n\n"
+                
+                "## Step 4: RECOMMENDATIONS\n"
+                "Provide 2–3 complete, actionable bullet points.\n"
+                "Ensure each bullet is a full sentence and fully written (no incomplete items).\n"
+                "This section MUST be present and use bullet points like Step 1.\n\n"
+
+                "## Trust Note\n"
+                "End with this exact sentence on its own line:\n"
+                "This explanation is based on computed statistics from your data.\n\n"
+                
+                "CRITICAL RULES:\n"
+                "- Reference specific values from the provided facts\n"
+                "- Do NOT compute, calculate, or invent any new numbers\n"
+                "- Do NOT introduce facts not present in the provided statistics\n"
+                "- Use bullet points in KEY FINDINGS\n"
+                "- Use short paragraphs in other sections\n"
+                "- Avoid overconfident language (no 'guarantees', 'always', 'never')\n"
+                "- Focus on actionable insights, not just descriptions"
+            )
 
 
 class PromptMetadataBuilder:

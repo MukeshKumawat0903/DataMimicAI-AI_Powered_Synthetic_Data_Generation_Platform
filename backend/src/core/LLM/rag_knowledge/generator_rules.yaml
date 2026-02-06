@@ -1,0 +1,54 @@
+# Generator Rules - System Knowledge for Synthetic Data Generation Patterns
+# These rules explain patterns and considerations for synthetic data generation.
+# NO recommendations or actions - only factual explanations.
+
+rules:
+  - rule_id: gen_001
+    issue_type: high_correlation
+    condition: "Strong correlation between features"
+    explanation: "Correlated features in synthetic data must preserve their statistical relationships. Independent generation of correlated variables produces unrealistic data that fails to capture real-world dependencies."
+
+  - rule_id: gen_002
+    issue_type: imbalance
+    condition: "Imbalanced target distribution"
+    explanation: "Synthetic data generation for imbalanced targets must decide whether to preserve the original imbalance ratio or create balanced synthetic samples. This choice affects downstream model training and evaluation."
+
+  - rule_id: gen_003
+    issue_type: high_skew
+    condition: "Skewed distributions in training data"
+    explanation: "Synthetic generation from skewed distributions requires methods that can accurately model heavy tails and extreme values, not just central tendency. Simple parametric assumptions may fail to capture the full range."
+
+  - rule_id: gen_004
+    issue_type: missing_values
+    condition: "Missing value patterns in source data"
+    explanation: "Synthetic data generation must decide how to handle missingness: preserve the same missing rate, impute before generation, or model the missingness mechanism itself. Each choice has different implications for data realism."
+
+  - rule_id: gen_005
+    issue_type: high_cardinality
+    condition: "High cardinality categorical features"
+    explanation: "Generating synthetic data for high-cardinality categories requires sufficient samples per category to learn realistic distributions. Rare categories may not be well-represented in synthetic output."
+
+  - rule_id: gen_006
+    issue_type: outliers
+    condition: "Outliers in training distribution"
+    explanation: "Synthetic data generation must balance between reproducing outliers (maintaining data realism) and avoiding their amplification (preventing synthetic artifacts). The treatment depends on whether outliers represent valid rare cases or errors."
+
+  - rule_id: gen_007
+    issue_type: temporal_dependency
+    condition: "Time-series or sequential data"
+    explanation: "Synthetic generation of temporal data requires preserving time-based dependencies, trends, seasonality, and autocorrelation. Independent sampling destroys these critical temporal patterns."
+
+  - rule_id: gen_008
+    issue_type: multivariate_distribution
+    condition: "Complex feature interactions"
+    explanation: "When features have complex non-linear relationships, synthetic generation must capture these interactions. Marginal-only generation produces data that looks valid per-feature but unrealistic in combination."
+
+  - rule_id: gen_009
+    issue_type: constraint_violation
+    condition: "Business rules and constraints"
+    explanation: "Real data contains implicit constraints (e.g., age >= 0, end_date > start_date). Synthetic generation that violates these constraints produces invalid records that fail downstream validation."
+
+  - rule_id: gen_010
+    issue_type: distribution_mode
+    condition: "Multimodal distributions"
+    explanation: "Data with multiple modes (peaks) represents distinct subpopulations. Synthetic generation must identify and preserve these modes rather than averaging them into unimodal output."

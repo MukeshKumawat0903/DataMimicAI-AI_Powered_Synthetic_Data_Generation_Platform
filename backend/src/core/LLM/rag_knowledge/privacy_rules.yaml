@@ -1,0 +1,79 @@
+# Privacy Rules - System Knowledge for Privacy Engineering in Synthetic Data
+# These rules explain privacy concepts and considerations for data protection.
+# NO recommendations or actions - only factual explanations.
+
+rules:
+  - rule_id: priv_001
+    issue_type: high_correlation
+    condition: "High correlation between quasi-identifiers"
+    explanation: "Strongly correlated quasi-identifiers (e.g., ZIP code and income) can enable re-identification even when individually anonymized. The combination narrows down the possible individuals more than each attribute alone."
+
+  - rule_id: priv_002
+    issue_type: high_cardinality
+    condition: "High cardinality quasi-identifier"
+    explanation: "Quasi-identifiers with many unique values (e.g., detailed job titles, precise timestamps) increase re-identification risk. Each additional unique value reduces the anonymity set size."
+
+  - rule_id: priv_003
+    issue_type: imbalance
+    condition: "Rare category membership"
+    explanation: "Individuals belonging to rare categories (e.g., uncommon medical conditions, rare occupations) face higher re-identification risk. Small group sizes make members more distinguishable in the dataset."
+
+  - rule_id: priv_004
+    issue_type: outliers
+    condition: "Extreme or unique values"
+    explanation: "Outlier values often correspond to unique individuals who are easily identifiable. For example, the highest earner in a dataset or someone with an extreme age can be singled out."
+
+  - rule_id: priv_005
+    issue_type: temporal_linkage
+    condition: "Sequential records for same entity"
+    explanation: "Time-series data for individuals creates linkage opportunities across time periods. Patterns in sequences can reveal identity even when individual records are anonymized."
+
+  - rule_id: priv_006
+    issue_type: attribute_disclosure
+    condition: "Sensitive attribute with low diversity"
+    explanation: "When a group defined by quasi-identifiers has low diversity in sensitive attributes, membership in that group discloses sensitive information. For example, if all patients with certain demographics have the same diagnosis."
+
+  - rule_id: priv_007
+    issue_type: identity_disclosure
+    condition: "Unique combination of attributes"
+    explanation: "Unique combinations of seemingly non-identifying attributes can enable re-identification. The combination of age, gender, and ZIP code uniquely identifies many individuals in public datasets."
+
+  - rule_id: priv_008
+    issue_type: differential_privacy_budget
+    condition: "Multiple queries on same dataset"
+    explanation: "Each query against a differentially private system consumes privacy budget. Cumulative information from multiple queries can eventually compromise privacy, even if individual queries are protected."
+
+  - rule_id: priv_009
+    issue_type: synthetic_data_fidelity
+    condition: "High fidelity synthetic data"
+    explanation: "Synthetic data with very high fidelity to original data may inadvertently memorize and reproduce individual records, especially outliers and rare cases. Perfect reproduction contradicts privacy goals."
+
+  - rule_id: priv_010
+    issue_type: auxiliary_information
+    condition: "External data availability"
+    explanation: "Attackers with auxiliary information (e.g., public records, social media) can cross-reference with anonymized data to re-identify individuals. Privacy protection must assume attackers have background knowledge."
+
+  - rule_id: priv_011
+    issue_type: k_anonymity
+    condition: "Small equivalence classes"
+    explanation: "K-anonymity requires each combination of quasi-identifiers appears for at least k individuals. Small k values or small equivalence classes provide weak privacy guarantees."
+
+  - rule_id: priv_012
+    issue_type: l_diversity
+    condition: "Homogeneous sensitive attributes"
+    explanation: "L-diversity requires at least l distinct values for sensitive attributes within each equivalence class. Lack of diversity means group membership reveals sensitive information."
+
+  - rule_id: priv_013
+    issue_type: t_closeness
+    condition: "Skewed sensitive attribute distribution"
+    explanation: "T-closeness requires the distribution of sensitive attributes in each equivalence class to be close to the overall distribution. Large divergence enables inference attacks."
+
+  - rule_id: priv_014
+    issue_type: membership_inference
+    condition: "Dataset membership prediction possible"
+    explanation: "Membership inference attacks determine whether a specific individual's data was in the training set. Successful attacks reveal private information about dataset composition."
+
+  - rule_id: priv_015
+    issue_type: model_inversion
+    condition: "Model outputs reveal training data"
+    explanation: "Model inversion attacks reconstruct training data features from model predictions. This is particularly concerning for models trained on sensitive data like medical images or financial records."

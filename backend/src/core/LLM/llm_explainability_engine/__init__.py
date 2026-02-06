@@ -62,6 +62,41 @@ from .output_validator import (
     NumericExtractor
 )
 
+from .baseline_guard import (
+    BaselineGuard,
+    BaselineSnapshot,
+    capture_signals_snapshot,
+    assert_signals_structure,
+    assert_context_matches_signals,
+    get_snapshot_summary,
+    enable_baseline_guard,
+    disable_baseline_guard,
+    is_baseline_guard_enabled
+)
+
+from .diagnostics_builder import (
+    build_diagnostics,
+    DiagnosticsThresholds,
+    get_diagnostics_by_severity,
+    get_diagnostics_by_type,
+    get_affected_columns,
+    classify_skewness_severity,
+    classify_missing_severity,
+    classify_outlier_severity,
+    classify_drift_ks_severity,
+    classify_drift_psi_severity,
+    classify_imbalance_severity,
+    classify_cardinality_severity,
+    classify_correlation_severity
+)
+
+from .diagnostics_explainer import (
+    format_diagnostics_for_explanation,
+    build_diagnostics_context_for_prompt,
+    get_issue_type_description,
+    get_severity_label
+)
+
 __all__ = [
     # STEP 1: Signal extraction
     'build_explainable_signals',
@@ -109,4 +144,36 @@ __all__ = [
     'LengthValidator',
     'LanguageSanitizer',
     'NumericExtractor',
+    
+    # Baseline Guard: Protection for existing behavior
+    'BaselineGuard',
+    'BaselineSnapshot',
+    'capture_signals_snapshot',
+    'assert_signals_structure',
+    'assert_context_matches_signals',
+    'get_snapshot_summary',
+    'enable_baseline_guard',
+    'disable_baseline_guard',
+    'is_baseline_guard_enabled',
+    
+    # Diagnostics Builder: Deterministic issue classification
+    'build_diagnostics',
+    'DiagnosticsThresholds',
+    'get_diagnostics_by_severity',
+    'get_diagnostics_by_type',
+    'get_affected_columns',
+    'classify_skewness_severity',
+    'classify_missing_severity',
+    'classify_outlier_severity',
+    'classify_drift_ks_severity',
+    'classify_drift_psi_severity',
+    'classify_imbalance_severity',
+    'classify_cardinality_severity',
+    'classify_correlation_severity',
+    
+    # Diagnostics Explainer: Presentation layer for diagnostics
+    'format_diagnostics_for_explanation',
+    'build_diagnostics_context_for_prompt',
+    'get_issue_type_description',
+    'get_severity_label'
 ]

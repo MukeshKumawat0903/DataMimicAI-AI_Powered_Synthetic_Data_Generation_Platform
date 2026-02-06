@@ -93,21 +93,21 @@ def show_eda_and_feature_engineering():
     elif st.session_state.explore_mode == 'ai':
         # AI Assistance UI with LLM pipeline integration
         ai_tab1, ai_tab2, ai_tab3, ai_tab4 = st.tabs([
-            "🔍 Explain",
-            "🤖 AI Suggestions",
-            "⚠️ Risks",
-            "📄 Summary"
+            "🔍 Diagnostics",
+            "🤖 Action Planner",
+            "⚠️ Privacy & Risk Audit",
+            "📄 Decision Report"
         ])
         with ai_tab1:
             # STEP 7: UI Integration - Delegated to helper module
             show_explanation_tab()
         
         with ai_tab2:
-            st.info("🤖 **AI Suggestions**: Coming soon - Intelligent recommendations for data transformations and feature engineering.")
+            st.info("🤖 **Action Planner**: Coming soon - Agent-driven action planning based on diagnostics. This feature will provide intelligent recommendations when enabled.")
         with ai_tab3:
-            st.info("⚠️ **Risks**: Coming soon - Automated risk assessment and data quality warnings.")
+            st.info("⚠️ **Privacy & Risk Audit**: Coming soon - Automated privacy risk assessment and data quality audit. Read-only analysis of potential vulnerabilities.")
         with ai_tab4:
-            st.info("📄 **Summary**: Coming soon - Comprehensive AI-generated analysis summary.")
+            st.info("📄 **Decision Report**: Coming soon - High-level decision summary aggregating diagnostics and audit results. No action execution.")
 
 def main():
     st.set_page_config(page_title="DataMimicAI Synthetic Data Platform", layout="wide")

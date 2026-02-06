@@ -16,6 +16,20 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 from dataclasses import dataclass
 import warnings
+import logging
+
+# Baseline guard for protecting existing behavior
+try:
+    from .baseline_guard import (
+        capture_signals_snapshot,
+        assert_context_matches_signals,
+        is_baseline_guard_enabled
+    )
+    _baseline_guard_available = True
+except ImportError:
+    _baseline_guard_available = False
+    
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -667,8 +681,30 @@ def select_explainable_context(
     ...     max_items=10
     ... )
     """
+    # BASELINE GUARD: Capture input signals snapshot (STEP 2 input)
+    # This validates that STEP 2 receives the same EDA inputs as before
+    if _baseline_guard_available and is_baseline_guard_enabled():
+        try:
+            capture_signals_snapshot(
+                signals,
+                label=f"STEP2_select_context_input_scope={scope}",
+                log_level="debug"
+            )
+        except Exception as e:
+            logger.warning(f"[BASELINE] Input snapshot failed: {e}")
+    
     selector = SignalContextSelector(config)
-    return selector.select_context(signals, scope, columns, max_items)
+    context = selector.select_context(signals, scope, columns, max_items)
+    
+    # BASELINE GUARD: Validate context matches signals
+    # This ensures STEP 2 correctly derives context from STEP 1 signals
+    if _baseline_guard_available and is_baseline_guard_enabled():
+        try:
+            assert_context_matches_signals(context, signals)
+        except Exception as e:
+            logger.warning(f"[BASELINE] Context validation failed: {e}")
+    
+    return context
 
 
 # Example usage and testing (for development only - remove in production)

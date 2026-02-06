@@ -1,0 +1,104 @@
+# EDA Rules - System Knowledge for Data Quality Issues
+# These rules define WHAT each issue type means and WHY it matters.
+# NO recommendations or actions - only factual explanations.
+
+rules:
+  - rule_id: eda_001
+    issue_type: high_skew
+    condition: "Skewness absolute value >= 2.0"
+    explanation: "High skewness indicates the data distribution is heavily asymmetric. Positive skew means a long tail to the right with most values concentrated on the left. Negative skew means a long tail to the left with most values concentrated on the right. This affects statistical assumptions and can impact model performance."
+
+  - rule_id: eda_002
+    issue_type: high_skew
+    condition: "Skewness absolute value >= 1.0 and < 2.0"
+    explanation: "Moderate skewness indicates noticeable asymmetry in the data distribution. The distribution has a visible tail on one side, suggesting values are not evenly distributed around the mean."
+
+  - rule_id: eda_003
+    issue_type: missing_values
+    condition: "Missing percentage >= 50%"
+    explanation: "More than half of the values in this column are missing. This represents a severe data quality issue that significantly limits the column's analytical value and may indicate collection or processing problems."
+
+  - rule_id: eda_004
+    issue_type: missing_values
+    condition: "Missing percentage >= 20% and < 50%"
+    explanation: "A substantial portion of values in this column are missing. This level of missingness can introduce bias and reduce statistical power in analyses."
+
+  - rule_id: eda_005
+    issue_type: missing_values
+    condition: "Missing percentage >= 5% and < 20%"
+    explanation: "A noticeable portion of values in this column are missing. While not severe, this should be considered when interpreting results and may require attention depending on the analysis context."
+
+  - rule_id: eda_006
+    issue_type: outliers
+    condition: "Outlier percentage >= 10%"
+    explanation: "A large proportion of values fall outside the expected range (beyond 1.5 * IQR from quartiles). This high concentration of extreme values may indicate data quality issues, measurement errors, or genuine but rare phenomena that need investigation."
+
+  - rule_id: eda_007
+    issue_type: outliers
+    condition: "Outlier percentage >= 5% and < 10%"
+    explanation: "A moderate number of values fall outside the expected range. These outliers may represent legitimate extreme cases, data entry errors, or special conditions worth examining."
+
+  - rule_id: eda_008
+    issue_type: outliers
+    condition: "Outlier percentage >= 2% and < 5%"
+    explanation: "A small but noticeable number of values fall outside the expected range. This is within typical expectations for many datasets and may represent natural variation."
+
+  - rule_id: eda_009
+    issue_type: imbalance
+    condition: "Dominant category >= 95%"
+    explanation: "One category dominates almost entirely, representing 95% or more of all values. This extreme imbalance severely limits the ability to analyze or model relationships involving minority categories."
+
+  - rule_id: eda_010
+    issue_type: imbalance
+    condition: "Dominant category >= 85% and < 95%"
+    explanation: "One category is heavily dominant, representing 85-95% of values. This significant imbalance may affect analysis fairness and model performance for minority categories."
+
+  - rule_id: eda_011
+    issue_type: imbalance
+    condition: "Dominant category >= 70% and < 85%"
+    explanation: "One category is noticeably dominant, representing 70-85% of values. This imbalance should be considered when interpreting patterns and building models."
+
+  - rule_id: eda_012
+    issue_type: high_cardinality
+    condition: "Unique values >= 500"
+    explanation: "This categorical column has an extremely high number of unique values (500+), approaching or exceeding typical identifier characteristics. This may indicate the column is actually an ID field, contains free text, or has granularity issues."
+
+  - rule_id: eda_013
+    issue_type: high_cardinality
+    condition: "Unique values >= 100 and < 500"
+    explanation: "This categorical column has a very high number of unique values (100-500). This can create challenges for analysis and modeling, as categories may have insufficient samples."
+
+  - rule_id: eda_014
+    issue_type: high_cardinality
+    condition: "Unique values >= 50 and < 100"
+    explanation: "This categorical column has a high number of unique values (50-100). Depending on the dataset size, this may complicate analysis and require grouping or aggregation."
+
+  - rule_id: eda_015
+    issue_type: high_correlation
+    condition: "Pearson correlation absolute value >= 0.95"
+    explanation: "These columns are almost perfectly linearly correlated. This extreme correlation suggests potential redundancy, multicollinearity issues, or that one column may be derived from the other."
+
+  - rule_id: eda_016
+    issue_type: high_correlation
+    condition: "Pearson correlation absolute value >= 0.8 and < 0.95"
+    explanation: "These columns have a strong linear relationship. This high correlation may indicate redundant information or multicollinearity concerns in statistical modeling."
+
+  - rule_id: eda_017
+    issue_type: high_correlation
+    condition: "Spearman correlation absolute value >= 0.95"
+    explanation: "These columns are almost perfectly monotonically correlated. Their values move together in a consistent rank order, suggesting potential redundancy or that one may be a transformation of the other."
+
+  - rule_id: eda_018
+    issue_type: high_correlation
+    condition: "Spearman correlation absolute value >= 0.8 and < 0.95"
+    explanation: "These columns have a strong monotonic relationship. Their values tend to move together in rank order, which may indicate overlapping information."
+
+  - rule_id: eda_019
+    issue_type: drift
+    condition: "KS statistic >= 0.3"
+    explanation: "The Kolmogorov-Smirnov statistic indicates a significant difference between the current data distribution and a reference distribution. This suggests substantial drift in the data characteristics over time or between datasets."
+
+  - rule_id: eda_020
+    issue_type: drift
+    condition: "Population Stability Index (PSI) >= 0.3"
+    explanation: "The PSI value indicates significant population shift. This level of drift suggests the data distribution has changed substantially, which may affect model validity and analysis assumptions."

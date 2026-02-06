@@ -16,6 +16,20 @@ from scipy import stats
 from typing import Dict, List, Any, Tuple, Optional
 import warnings
 from dataclasses import dataclass
+import logging
+
+# Baseline guard for protecting existing behavior
+try:
+    from .baseline_guard import (
+        capture_signals_snapshot,
+        assert_signals_structure,
+        is_baseline_guard_enabled
+    )
+    _baseline_guard_available = True
+except ImportError:
+    _baseline_guard_available = False
+    
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -795,7 +809,22 @@ def build_explainable_signals(df: pd.DataFrame, config: Optional[SignalConfig] =
     >>> signals = build_explainable_signals(df, config=custom_config)
     """
     extractor = ExplainableSignalsExtractor(config)
-    return extractor.extract(df)
+    signals = extractor.extract(df)
+    
+    # BASELINE GUARD: Capture snapshot of signals (STEP 1)
+    # This protects existing behavior by logging the raw EDA statistics
+    if _baseline_guard_available and is_baseline_guard_enabled():
+        try:
+            capture_signals_snapshot(
+                signals,
+                label="STEP1_build_explainable_signals",
+                log_level="debug"
+            )
+            assert_signals_structure(signals)
+        except Exception as e:
+            logger.warning(f"[BASELINE] Guard check failed: {e}")
+    
+    return signals
 
 
 # Example usage (for testing purposes only - remove or comment out in production)
