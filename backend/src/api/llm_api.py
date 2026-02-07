@@ -15,7 +15,7 @@ import os
 from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field
 
-from src.core.LLM import (
+from src.core.explainability import (
     build_explainable_signals,
     select_explainable_context,
     build_explanation_prompt,
@@ -28,7 +28,7 @@ from src.core.LLM import (
 
 # Baseline guard for protecting existing behavior
 try:
-    from src.core.LLM.llm_explainability_engine.baseline_guard import (
+    from src.core.explainability.llm_explainability_engine.baseline_guard import (
         assert_signals_structure,
         assert_context_matches_signals,
         enable_baseline_guard,
@@ -223,7 +223,7 @@ async def generate_explanation(request: ExplanationRequest = Body(...)):
         if request.use_rag:
             logger.info("STEP 3: Retrieving RAG knowledge for diagnostics")
             try:
-                from src.core.LLM.rag import augment_diagnostics_with_rules
+                from src.core.explainability.rag import augment_diagnostics_with_rules
                 
                 # Augment diagnostics with relevant knowledge rules
                 diagnostics_with_rag = augment_diagnostics_with_rules(diagnostics)

@@ -900,7 +900,7 @@ def build_diagnostics(
     
     Examples
     --------
-    >>> from src.core.LLM.llm_explainability_engine import build_explainable_signals
+    >>> from src.core.explainability.llm_explainability_engine import build_explainable_signals
     >>> signals = build_explainable_signals(df)
     >>> diagnostics = build_diagnostics(signals)
     >>> print(diagnostics["summary"]["total_issues"])

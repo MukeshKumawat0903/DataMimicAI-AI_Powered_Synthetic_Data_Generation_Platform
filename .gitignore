@@ -8,4 +8,4 @@ notebooks
 *Readme_Interview.md
 *Learning_AI
 .env
-*backend/src/core/LLM/docs
+*backend/src/core/explainability/docs

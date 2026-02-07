@@ -656,7 +656,7 @@ def select_explainable_context(
     
     Examples
     --------
-    >>> from core.LLM.llm_explainability_engine import build_explainable_signals, select_explainable_context
+    >>> from core.explainability.llm_explainability_engine import build_explainable_signals, select_explainable_context
     >>> 
     >>> # Step 1: Extract all signals
     >>> signals = build_explainable_signals(df)

@@ -100,15 +100,6 @@ class PlanReviewAndApprovalGate:
         
         plan_id = plan.get("plan_id")
         
-        # Prevent re-approval
-        if plan_id in self._approval_records:
-            existing_status = self._approval_records[plan_id]["status"]
-            if existing_status != ApprovalStatus.PENDING.value:
-                raise ValueError(
-                    f"Plan {plan_id} already has decision: {existing_status}. "
-                    "Cannot re-approve or re-reject."
-                )
-        
         # Normalize decision
         normalized_decision = decision.lower()
         status = (
@@ -116,6 +107,23 @@ class PlanReviewAndApprovalGate:
             if normalized_decision == "approve"
             else ApprovalStatus.REJECTED.value
         )
+        
+        # Check for existing decision
+        if plan_id in self._approval_records:
+            existing_status = self._approval_records[plan_id]["status"]
+            
+            # Allow idempotent approvals (same decision = success, no error)
+            if existing_status == status:
+                # Same decision - return existing record (idempotent)
+                return self._approval_records[plan_id]
+            
+            # Prevent changing from approved to rejected or vice versa
+            if existing_status != ApprovalStatus.PENDING.value:
+                raise ValueError(
+                    f"Plan {plan_id} already has decision: {existing_status}. "
+                    f"Cannot change to {status}. "
+                    "Use clear_records() to reset or use a different plan_id."
+                )
         
         # Create immutable approval record
         approval_record = {
@@ -197,6 +205,23 @@ class PlanReviewAndApprovalGate:
         self._approval_records.clear()
         if self._storage_path and self._storage_path.exists():
             self._storage_path.unlink()
+    
+    def clear_plan_approval(self, plan_id: str) -> bool:
+        """
+        Clear approval record for a specific plan (useful for development/testing).
+        
+        Args:
+            plan_id: The plan identifier to clear
+        
+        Returns:
+            True if record was cleared, False if it didn't exist
+        """
+        if plan_id in self._approval_records:
+            del self._approval_records[plan_id]
+            if self._storage_path:
+                self._save_records()
+            return True
+        return False
     
     # =====================================================================
     # VALIDATION METHODS (STRICT SCHEMA ENFORCEMENT)

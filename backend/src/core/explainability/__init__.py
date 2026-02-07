@@ -1,5 +1,5 @@
 """
-LLM Module - Utilities for LLM-based data explanations.
+Explainability Module - Utilities for LLM-based data explanations.
 This is a wrapper for the llm_explainability_engine sub-package.
 """
 

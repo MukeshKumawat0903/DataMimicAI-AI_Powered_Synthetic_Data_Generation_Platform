@@ -402,3 +402,59 @@ async def health_check() -> Dict[str, str]:
         "service": "approval-api",
         "version": "1.0"
     }
+
+
+@router.delete("/clear-plan/{plan_id}")
+async def clear_plan_approval(
+    plan_id: str = Path(..., description="Plan ID to clear approval for")
+) -> Dict[str, Any]:
+    """
+    Clear approval record for a specific plan (useful for development/testing).
+    
+    This allows re-submitting a plan for approval after clearing its previous decision.
+    
+    Parameters
+    ----------
+    plan_id : str
+        The plan identifier to clear
+    
+    Returns
+    -------
+    Dict[str, Any]
+        Result indicating if the record was cleared
+    
+    Examples
+    --------
+    DELETE /api/approval/clear-plan/TP-001
+    
+    Response:
+    {
+        "plan_id": "TP-001",
+        "cleared": true,
+        "message": "Approval record cleared successfully"
+    }
+    """
+    try:
+        cleared = _approval_gate.clear_plan_approval(plan_id)
+        
+        if cleared:
+            logger.info(f"Cleared approval record for plan {plan_id}")
+            return {
+                "plan_id": plan_id,
+                "cleared": True,
+                "message": "Approval record cleared successfully"
+            }
+        else:
+            logger.info(f"No approval record found for plan {plan_id}")
+            return {
+                "plan_id": plan_id,
+                "cleared": False,
+                "message": "No approval record found for this plan"
+            }
+    
+    except Exception as e:
+        logger.error(f"Error clearing plan approval: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error clearing plan approval: {str(e)}"
+        )

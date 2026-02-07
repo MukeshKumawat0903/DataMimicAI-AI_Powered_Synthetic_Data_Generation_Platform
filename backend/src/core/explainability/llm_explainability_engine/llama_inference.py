@@ -330,7 +330,7 @@ def run_llama_explanation(
     
     Examples
     --------
-    >>> from core.LLM.llm_explainability_engine import (
+    >>> from core.explainability.llm_explainability_engine import (
     ...     build_explainable_signals,
     ...     select_explainable_context,
     ...     build_explanation_prompt,
