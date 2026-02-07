@@ -17,19 +17,18 @@ import logging
 import os
 import pandas as pd
 
-from src.core.execution.deterministic_execution_engine import (
-    DeterministicExecutionEngine,
-    ExecutionStatus
-)
-from src.core.validation.validation_feedback_loop import ValidationFeedbackLoop
-from src.core.validation.validation_storage import get_validation_store
+# LAZY: Import lightweight enums only
 from src.core.ai_assistance.approval.plan_review_gate import ApprovalStatus
-from src.api.shared_state import approval_gate, submitted_plans
+
+# LAZY: Import lazy getter instead of direct instance
+from src.api.shared_state import get_approval_gate, submitted_plans
+
+# LAZY: Validation store getter is already lazy-safe (returns singleton)
+from src.core.validation.validation_storage import get_validation_store
 
 logger = logging.getLogger(__name__)
 
 # Use shared state to avoid circular imports
-_approval_gate = approval_gate
 _submitted_plans = submitted_plans
 
 router = APIRouter(prefix="/api/execution", tags=["execution"])
@@ -144,6 +143,9 @@ async def execute_plan(
     try:
         logger.info(f"Executing plan {plan_id} on file {file_id}")
         
+        # LAZY: Get approval gate on-demand (only when executing)
+        _approval_gate = get_approval_gate()
+        
         # STEP 1: Verify plan exists in submitted plans
         if plan_id not in _submitted_plans:
             logger.warning(f"Plan {plan_id} not found in submitted plans")
@@ -186,7 +188,12 @@ async def execute_plan(
             )
         
         # STEP 6: Execute transformations
-        logger.info(f"Executing transformations for plan {plan_id}...")
+        logger.info(f"Executing transformations for plan {plan_id}...")        
+        # LAZY: Import execution engine only when executing (not at startup)
+        from src.core.execution.deterministic_execution_engine import (
+            DeterministicExecutionEngine,
+            ExecutionStatus
+        )
         engine = DeterministicExecutionEngine()
         
         try:
@@ -223,7 +230,8 @@ async def execute_plan(
         if execution_result.execution_status == ExecutionStatus.SUCCESS.value:
             if execution_result.transformed_data is not None:
                 logger.info(f"Running validation feedback loop for plan {plan_id}...")
-                
+                # LAZY: Import validation only when running validation (after execution)
+                from src.core.validation.validation_feedback_loop import ValidationFeedbackLoop
                 try:
                     validator = ValidationFeedbackLoop()
                     validation_report = validator.validate(
@@ -320,7 +328,8 @@ async def get_execution_status(plan_id: str) -> Dict[str, Any]:
                 status_code=404,
                 detail=f"Plan not found: {plan_id}"
             )
-        
+        # LAZY: Get approval gate on-demand
+        _approval_gate = get_approval_gate()
         # Get approval status
         approval_status = _approval_gate.get_approval_status(plan_id)
         can_execute = (approval_status == ApprovalStatus.APPROVED.value)

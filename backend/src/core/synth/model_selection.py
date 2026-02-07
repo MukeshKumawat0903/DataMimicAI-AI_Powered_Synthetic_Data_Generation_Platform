@@ -4,7 +4,8 @@ import numpy as np
 import logging
 import gc
 import psutil
-from src.core.synth.synthcity_generator import SynthCitySyntheticGenerator
+# LAZY LOADING: SynthCitySyntheticGenerator imported inside function to avoid loading
+# SynthCity/PyTorch at module import time (saves 500MB+ at startup)
 from src.core.synth.config import advanced_models, metric_cols
 
 # Try to import torch for GPU memory management, fallback if not available
@@ -92,6 +93,10 @@ def log_memory_consumption(model_name, phase, start_memory_mb=None):
 
 def synthcity_model_comparison(real_df, epochs=100, target_column="Survived"):
     """Enhanced model comparison with memory management and monitoring"""
+    # LAZY LOAD: Import SynthCity generator only when running model comparison
+    # This prevents loading 500MB+ of SynthCity/PyTorch at module import time
+    from src.core.synth.synthcity_generator import SynthCitySyntheticGenerator
+    
     model_results = []
     total_models = len(advanced_models)
     

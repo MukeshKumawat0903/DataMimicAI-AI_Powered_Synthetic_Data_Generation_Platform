@@ -15,7 +15,9 @@ from fastapi import APIRouter, HTTPException, Body
 from typing import Dict, Any, Optional
 import logging
 
-from src.core.ai_assistance.agents.transformation_planner_agent import TransformationPlannerAgent
+# LAZY: Agent import moved inside endpoint function
+# from src.core.ai_assistance.agents.transformation_planner_agent import TransformationPlannerAgent
+
 from src.api.shared_state import submitted_plans
 
 logger = logging.getLogger(__name__)
@@ -215,8 +217,9 @@ async def create_transformation_plan(
             "diagnostics": diagnostics,
             "interpretation": interpretation
         }
-        
-        # Instantiate agent (stateless, no side effects)
+                # LAZY: Import agent only when endpoint is called (not at startup)
+        from src.core.ai_assistance.agents.transformation_planner_agent import TransformationPlannerAgent
+                # Instantiate agent (stateless, no side effects)
         agent = TransformationPlannerAgent(rag_context=rag_context)
         
         # Generate plans (deterministic, proposal-only)

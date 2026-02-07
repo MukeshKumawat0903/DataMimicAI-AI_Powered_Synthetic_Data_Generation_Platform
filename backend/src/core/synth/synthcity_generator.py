@@ -1,17 +1,15 @@
 import pandas as pd
-import torch
 import psutil
 import threading
 import time
 import gc
 import logging
-from synthcity.plugins import Plugins
-from synthcity.plugins.core.dataloader import GenericDataLoader
-from synthcity.metrics.eval_statistical import (
-    KolmogorovSmirnovTest, JensenShannonDistance, WassersteinDistance,
-    MaximumMeanDiscrepancy, InverseKLDivergence
-)
-from sklearn.preprocessing import LabelEncoder
+
+# LAZY LOADING: Heavy imports moved inside methods
+# torch - imported in __init__ and methods that need it
+# synthcity - imported in fit() when model is created
+# sklearn - imported in preprocessing methods
+# This prevents loading 500MB+ of ML libraries at startup
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -30,8 +28,10 @@ class SynthCitySyntheticGenerator:
         # --- PERFORMANCE SAFEGUARDS ---
         logger.info(f"Initializing {algorithm} with performance optimizations")
         
+        # LAZY LOAD: Import torch only when needed for CPU/GPU setup
         # Limit CPU usage for intensive models
         if algorithm in ['ddpm', 'ctgan', 'tvae', 'dpgan', 'pategan']:
+            import torch
             torch.set_num_threads(min(4, psutil.cpu_count() // 2))  # Use half of available CPUs
             logger.info(f"Limited CPU threads to {torch.get_num_threads()} for {algorithm}")
             
@@ -42,6 +42,12 @@ class SynthCitySyntheticGenerator:
     def fit(self, real_data):
         """Fit the model with resource monitoring and memory optimization"""
         logger.info(f"Starting training for {self.algorithm} with {len(real_data)} samples")
+        
+        # LAZY LOAD: Import heavy SynthCity libraries only when training
+        # This prevents loading 300MB+ of dependencies at startup
+        from synthcity.plugins import Plugins
+        from synthcity.plugins.core.dataloader import GenericDataLoader
+        
         # Check system resources before training
         self._check_system_resources()
         # Start resource monitoring
@@ -72,8 +78,13 @@ class SynthCitySyntheticGenerator:
             self._monitoring = False
             # Clean up resources
             gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            # LAZY LOAD: Import torch only if needed for GPU cleanup
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except ImportError:
+                pass  # torch not available, skip GPU cleanup
         
         return self
 
@@ -141,8 +152,13 @@ class SynthCitySyntheticGenerator:
             logger.error(f"Generation failed: {str(e)}")
             # Attempt memory cleanup on failure
             gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            # LAZY LOAD: Import torch only if needed for GPU cleanup
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except ImportError:
+                pass  # torch not available, skip GPU cleanup
             raise
 
     def generate(self, real_data, num_rows=1000):
@@ -186,8 +202,13 @@ class SynthCitySyntheticGenerator:
                     
                     # Force garbage collection on high usage
                     gc.collect()
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
+                    # LAZY LOAD: Import torch only if needed for GPU cleanup
+                    try:
+                        import torch
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                    except ImportError:
+                        pass  # torch not available, skip GPU cleanup
                 
                 time.sleep(5)  # Check every 5 seconds
                 
@@ -201,6 +222,9 @@ class SynthCitySyntheticGenerator:
     def preprocess_for_evaluation(real_df, synth_df):
         """Preprocess data for evaluation with memory optimization"""
         logger.info("Preprocessing data for evaluation")
+        
+        # LAZY LOAD: Import sklearn only when preprocessing for evaluation
+        from sklearn.preprocessing import LabelEncoder
         
         real_df_processed = real_df.copy()
         synth_df_processed = synth_df.copy()
@@ -227,6 +251,14 @@ class SynthCitySyntheticGenerator:
     def evaluate_metrics_for_model(real_df, synth_df):
         """Evaluate model metrics with error handling"""
         logger.info("Evaluating model metrics")
+        
+        # LAZY LOAD: Import SynthCity evaluation libraries only when computing metrics
+        # These are heavy dependencies (100MB+) that shouldn't load at startup
+        from synthcity.plugins.core.dataloader import GenericDataLoader
+        from synthcity.metrics.eval_statistical import (
+            KolmogorovSmirnovTest, JensenShannonDistance, WassersteinDistance,
+            MaximumMeanDiscrepancy, InverseKLDivergence
+        )
         
         try:
             real_loader = GenericDataLoader(real_df, target_column="Survived")

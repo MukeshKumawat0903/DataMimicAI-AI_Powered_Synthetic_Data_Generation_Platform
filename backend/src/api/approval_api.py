@@ -17,18 +17,17 @@ from fastapi import APIRouter, HTTPException, Body, Path
 from typing import Dict, Any, List, Optional
 import logging
 
-from src.core.ai_assistance.approval.plan_review_gate import (
-    PlanReviewAndApprovalGate,
-    ApprovalStatus
-)
-from src.api.shared_state import approval_gate, submitted_plans
+# LAZY: Import ApprovalStatus only (enum, lightweight)
+from src.core.ai_assistance.approval.plan_review_gate import ApprovalStatus
+
+# LAZY: Import lazy getter instead of direct instance
+from src.api.shared_state import get_approval_gate, submitted_plans
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/approval", tags=["approval"])
 
 # Use shared state to avoid circular imports
-_approval_gate = approval_gate
 _submitted_plans = submitted_plans
 
 
@@ -145,6 +144,9 @@ async def review_plan(
         if plan_id not in _submitted_plans:
             _submitted_plans[plan_id] = plan
         
+        # LAZY: Get approval gate on-demand (only when endpoint is called)
+        _approval_gate = get_approval_gate()
+        
         # Call approval gate (validates and records decision)
         approval_record = _approval_gate.review_plan(
             plan=plan,
@@ -207,6 +209,9 @@ async def get_pending_plans() -> Dict[str, Any]:
     }
     """
     try:
+        # LAZY: Get approval gate on-demand
+        _approval_gate = get_approval_gate()
+        
         pending_plans = []
         
         # Check each submitted plan's approval status
@@ -284,6 +289,9 @@ async def get_plan_status(
                 detail=f"Plan not found: {plan_id}. Plan must be submitted before checking status."
             )
         
+        # LAZY: Get approval gate on-demand
+        _approval_gate = get_approval_gate()
+        
         # Get approval status and record
         status = _approval_gate.get_approval_status(plan_id)
         approval_record = _approval_gate.get_approval_record(plan_id)
@@ -330,6 +338,9 @@ async def get_approved_plans() -> Dict[str, Any]:
     }
     """
     try:
+        # LAZY: Get approval gate on-demand
+        _approval_gate = get_approval_gate()
+        
         approved_plan_ids = _approval_gate.list_approved_plans()
         
         logger.info(f"Retrieved {len(approved_plan_ids)} approved plans")
@@ -370,6 +381,9 @@ async def get_rejected_plans() -> Dict[str, Any]:
     }
     """
     try:
+        # LAZY: Get approval gate on-demand
+        _approval_gate = get_approval_gate()
+        
         rejected_plan_ids = _approval_gate.list_rejected_plans()
         
         logger.info(f"Retrieved {len(rejected_plan_ids)} rejected plans")
@@ -435,6 +449,9 @@ async def clear_plan_approval(
     }
     """
     try:
+        # LAZY: Get approval gate on-demand
+        _approval_gate = get_approval_gate()
+        
         cleared = _approval_gate.clear_plan_approval(plan_id)
         
         if cleared:

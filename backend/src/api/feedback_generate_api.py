@@ -9,7 +9,8 @@ import io
 import logging
 
 from src.core.feedback_engine import EDAFeedbackEngine
-from src.core.synth.generator import SDVSyntheticGenerator
+# LAZY LOADING: SDVSyntheticGenerator imported inside function to avoid loading
+# SDV library at module import time (saves 200MB+ at startup)
 from src.core.data_processing import detect_metadata
 
 # Resolve UPLOAD_DIR to absolute path
@@ -33,6 +34,10 @@ def generate_and_download(
     Applies feedback, generates synthetic data, and streams the result as a downloadable CSV file.
     Use this endpoint for preview+download combo in frontend.
     """
+    # LAZY LOAD: Import SDV generator only when generating data
+    # This prevents loading 200MB+ of SDV dependencies at startup
+    from src.core.synth.generator import SDVSyntheticGenerator
+    
     try:
         file_path = os.path.join(UPLOAD_DIR, f"{file_id}.csv")
         df = pd.read_csv(file_path)

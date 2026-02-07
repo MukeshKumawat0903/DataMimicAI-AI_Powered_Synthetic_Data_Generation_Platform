@@ -6,7 +6,9 @@ import json
 import time
 import logging
 import psutil
-from synthcity.plugins import Plugins
+
+# LAZY: Heavy ML library imports moved inside endpoints
+# from synthcity.plugins import Plugins
 
 # Third-party libraries
 import pandas as pd
@@ -26,12 +28,16 @@ from src.core.data_processing import (
     prepare_training_data as data_loader,
     process_demo_data,
 )
-from src.core.visualization import DataVisualizer
+
+# LAZY: Heavy imports moved inside endpoints where they're used
+# from src.core.visualization import DataVisualizer
+# from src.core.synth.generator import SDVSyntheticGenerator
+# from src.core.synth.synthcity_generator import SynthCitySyntheticGenerator
+# from src.core.synth.model_selection import synthcity_model_comparison, select_best_model, get_memory_usage_mb
+
 from src.core.database import create_tables
 
 from src.api.eda_feature_api import router as eda_feature_router
-from src.core.synth.generator import SDVSyntheticGenerator
-from src.core.synth.synthcity_generator import SynthCitySyntheticGenerator
 from src.api.feedback_generate_api import router as feedback_router
 from src.api.llm_api import router as llm_router
 from src.api.validation_api import router as validation_router
@@ -39,7 +45,6 @@ from src.api.diagnostics_api import router as diagnostics_router
 from src.api.planner_api import router as planner_router
 from src.api.approval_api import router as approval_router
 from src.api.execution_api import router as execution_router
-from src.core.synth.model_selection import synthcity_model_comparison, select_best_model, get_memory_usage_mb
 
 from src.core.synth.config import advanced_models, metric_cols
 
@@ -69,8 +74,6 @@ if not UPLOAD_DIR:
     UPLOAD_DIR = os.path.join(backend_dir, "uploads")
 else:
     UPLOAD_DIR = os.path.abspath(UPLOAD_DIR)
-
-print(f"Using UPLOAD_DIR...............................: {UPLOAD_DIR}")
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 logger.info(f"Using UPLOAD_DIR: {UPLOAD_DIR}")
@@ -165,13 +168,9 @@ async def upload_dataset(file: UploadFile):
 
         logger.info(f"Uploaded file '{file.filename}' as '{file_id}'")
         
-        # Auto-trigger fast PII scan on upload (as per requirements)
-        try:
-            from src.core.eda.pii_scan import run_pii_scan_fast
-            pii_results = run_pii_scan_fast(df, sample_size=1000)
-            logger.info(f"Auto PII scan completed for file_id '{file_id}': {pii_results.get('summary', {}).get('total_pii_columns', 0)} PII columns detected")
-        except Exception as pii_error:
-            logger.warning(f"Auto PII scan failed for file_id '{file_id}': {pii_error}")
+        # NO AUTO-EXECUTION: PII scan removed from upload.
+        # ON-DEMAND ONLY: PII scan runs when user explicitly requests it via EDA API.
+        # This keeps application startup fast and prevents background work.
 
         return {"file_id": file_id}
 
@@ -291,6 +290,9 @@ async def generate_data(
         if algorithm in advanced_models.values():  # e.g., "ddpm", "ctgan", etc.
             logger.info(f"Creating SynthCity generator for: {algorithm} with epochs={epochs}")
             
+            # LAZY: Import SynthCity generator only when needed (not at startup)
+            from src.core.synth.synthcity_generator import SynthCitySyntheticGenerator
+            
             # Build plugin_kwargs with correct parameter name (conservative approach)
             synthcity_plugin_kwargs = {}
             iteration_param_name = ITERATION_PARAMS.get(algorithm)
@@ -309,6 +311,9 @@ async def generate_data(
 
         # --- SDV/PARS Section (Existing) ---
         elif algorithm == "PARS":
+            # LAZY: Import SDV generator only when needed (not at startup)
+            from src.core.synth.generator import SDVSyntheticGenerator
+            
             generator = SDVSyntheticGenerator(
                 algorithm=algorithm,
                 metadata=metadata,
@@ -320,9 +325,11 @@ async def generate_data(
                 num_sequences=num_sequences,
                 sequence_length=sequence_length,
             )
-
         else:
             # Regular SDV models
+            # LAZY: Import SDV generator only when needed (not at startup)
+            from src.core.synth.generator import SDVSyntheticGenerator
+            
             generator = SDVSyntheticGenerator(
                 algorithm=algorithm,
                 metadata=metadata,
@@ -392,6 +399,9 @@ async def evaluate_models(
     """
     Model evaluation with pandas compatibility fixes.
     """
+    # LAZY: Import model comparison functions only when executing model evaluation
+    from src.core.synth.model_selection import synthcity_model_comparison, select_best_model, get_memory_usage_mb
+    
     start_memory = get_memory_usage_mb()
     start_time = time.time()
     
@@ -410,7 +420,6 @@ async def evaluate_models(
             target_column = None
 
         logger.info(f"Starting model evaluation for {len(real_df)} samples with {epochs} epochs")
-
         # Run model comparison
         df_metrics = synthcity_model_comparison(
             real_df, 
@@ -504,7 +513,8 @@ async def visualize_data(
         synthetic_data = pd.read_csv(syn_path)
         real_data = pd.read_csv(orig_path)
         metadata = detect_metadata({"main_table": real_data})
-
+        # LAZY: Import DataVisualizer only when visualization is requested
+        from src.core.visualization import DataVisualizer
         visualizer = DataVisualizer(real_data, synthetic_data, metadata)
 
         if tab == "distribution":

@@ -15,7 +15,8 @@ from fastapi import APIRouter, HTTPException, Body
 from typing import Dict, Any, Optional
 import logging
 
-from src.core.ai_assistance.agents.diagnostics_interpreter_agent import DiagnosticsInterpreterAgent
+# LAZY: Agent import moved inside endpoint function
+# from src.core.ai_assistance.agents.diagnostics_interpreter_agent import DiagnosticsInterpreterAgent
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +154,8 @@ async def interpret_diagnostics(
         # Log request
         num_diagnostics = len(diagnostics_input.get("diagnostics", []))
         logger.info(f"Interpreting diagnostics with {num_diagnostics} issues")
-        
+        # LAZY: Import agent only when endpoint is called (not at startup)
+        from src.core.ai_assistance.agents.diagnostics_interpreter_agent import DiagnosticsInterpreterAgent
         # Instantiate agent (stateless, no side effects)
         agent = DiagnosticsInterpreterAgent(rag_context=rag_context)
         

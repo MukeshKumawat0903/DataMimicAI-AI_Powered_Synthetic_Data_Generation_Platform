@@ -15,16 +15,13 @@ import os
 from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field
 
-from src.core.ai_assistance.explainability import (
-    build_explainable_signals,
-    select_explainable_context,
-    build_explanation_prompt,
-    run_llama_explanation,
-    validate_llm_output,
-    get_validation_report,
-    build_diagnostics,
-    build_diagnostics_context_for_prompt
-)
+# LAZY LOADING: Heavy explainability imports moved inside endpoint function
+# This prevents loading LLM inference, diagnostics building, and validation logic at startup
+# Imports moved: build_explainable_signals, build_explanation_prompt, run_llama_explanation,
+#                validate_llm_output, get_validation_report, build_diagnostics,
+#                build_diagnostics_context_for_prompt
+
+logger = logging.getLogger(__name__)
 
 # Baseline guard for protecting existing behavior
 try:
@@ -38,8 +35,6 @@ try:
 except ImportError:
     _baseline_guard_available = False
     logger.warning("Baseline guard not available - skipping guard checks")
-
-logger = logging.getLogger(__name__)
 
 # Resolve UPLOAD_DIR to absolute path, defaulting to backend/uploads
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", None)
@@ -128,6 +123,18 @@ async def generate_explanation(request: ExplanationRequest = Body(...)):
         - 500: Pipeline execution error
     """
     try:
+        # LAZY LOAD: Import heavy explainability functions only when generating explanations
+        # This prevents loading 100MB+ of LLM, diagnostics, and validation logic at startup
+        from src.core.ai_assistance.explainability import (
+            build_explainable_signals,
+            build_explanation_prompt,
+            run_llama_explanation,
+            validate_llm_output,
+            get_validation_report,
+            build_diagnostics,
+            build_diagnostics_context_for_prompt
+        )
+        
         logger.info(f"Generating explanation for file_id={request.file_id}, scope={request.scope}")
         
         # Load dataset

@@ -1,11 +1,10 @@
 # src/core/synth/generator.py
 
 import pandas as pd
-from sdv.single_table import (
-    CTGANSynthesizer, GaussianCopulaSynthesizer, TVAESynthesizer
-)
-from sdv.multi_table import HMASynthesizer
-from sdv.sequential import PARSynthesizer
+
+# LAZY LOADING: Heavy SDV imports moved inside fit() method
+# This prevents loading all synthesizers at module import time
+# Synthesizers are imported only when generator.fit() is called
 
 class SDVSyntheticGenerator:
     """
@@ -22,6 +21,14 @@ class SDVSyntheticGenerator:
 
     def fit(self, real_data):
         """Fit synthesizer on real_data DataFrame."""
+        # LAZY LOAD: Import synthesizers only when fit() is called
+        # This keeps app startup fast - SDV libraries load on-demand
+        from sdv.single_table import (
+            CTGANSynthesizer, GaussianCopulaSynthesizer, TVAESynthesizer
+        )
+        from sdv.multi_table import HMASynthesizer
+        from sdv.sequential import PARSynthesizer
+        
         algo = self.algorithm
         if algo == "CTGAN":
             self.synthesizer = CTGANSynthesizer(
