@@ -28,6 +28,8 @@ from helpers.generation import show_generation_controls
 from helpers.visualization import show_visualization
 from helpers.validation import show_validation_and_refinement
 from helpers.llm_ui import show_explanation_tab
+from ui.decision_report_ui import show_decision_report_tab
+from ui.action_planner_ui import show_action_planner_tab
 # from helpers.roadmap import show_feature_placeholders
 from helpers.eda_feature_eng.expander_data_profiling import expander_data_profiling
 from helpers.eda_feature_eng.expander_correlation import expander_correlation
@@ -103,11 +105,13 @@ def show_eda_and_feature_engineering():
             show_explanation_tab()
         
         with ai_tab2:
-            st.info("🤖 **Action Planner**: Coming soon - Agent-driven action planning based on diagnostics. This feature will provide intelligent recommendations when enabled.")
+            # Action Planner - Complete transformation pipeline
+            show_action_planner_tab()
         with ai_tab3:
             st.info("⚠️ **Privacy & Risk Audit**: Coming soon - Automated privacy risk assessment and data quality audit. Read-only analysis of potential vulnerabilities.")
         with ai_tab4:
-            st.info("📄 **Decision Report**: Coming soon - High-level decision summary aggregating diagnostics and audit results. No action execution.")
+            # Decision Report - Display validation results
+            show_decision_report_tab()
 
 def main():
     st.set_page_config(page_title="DataMimicAI Synthetic Data Platform", layout="wide")

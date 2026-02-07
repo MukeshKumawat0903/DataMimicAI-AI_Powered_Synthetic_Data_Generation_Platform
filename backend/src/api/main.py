@@ -34,6 +34,11 @@ from src.core.synth.generator import SDVSyntheticGenerator
 from src.core.synth.synthcity_generator import SynthCitySyntheticGenerator
 from src.api.feedback_generate_api import router as feedback_router
 from src.api.llm_api import router as llm_router
+from src.api.validation_api import router as validation_router
+from src.api.diagnostics_api import router as diagnostics_router
+from src.api.planner_api import router as planner_router
+from src.api.approval_api import router as approval_router
+from src.api.execution_api import router as execution_router
 from src.core.synth.model_selection import synthcity_model_comparison, select_best_model, get_memory_usage_mb
 
 from src.core.synth.config import advanced_models, metric_cols
@@ -42,6 +47,11 @@ app = FastAPI()
 app.include_router(eda_feature_router)
 app.include_router(feedback_router)
 app.include_router(llm_router)
+app.include_router(validation_router)
+app.include_router(diagnostics_router)
+app.include_router(planner_router)
+app.include_router(approval_router)
+app.include_router(execution_router)
 
 @app.get("/")
 def home():
