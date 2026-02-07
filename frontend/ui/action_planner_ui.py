@@ -16,9 +16,10 @@ import streamlit as st
 import requests
 import json
 from typing import Dict, Any, Optional, List
+import os
 
 # Backend API configuration
-BACKEND_URL = "http://localhost:8000"
+BACKEND_URL = os.getenv("API_URL", "http://localhost:8000")
 
 
 def show_action_planner_tab():

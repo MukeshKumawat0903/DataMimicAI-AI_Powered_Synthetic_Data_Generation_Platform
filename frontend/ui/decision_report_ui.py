@@ -18,11 +18,12 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 import numpy as np
+import os
 
 logger = logging.getLogger(__name__)
 
 # Backend API configuration
-BACKEND_URL = "http://localhost:8000"
+BACKEND_URL = os.getenv("API_URL", "http://localhost:8000")
 
 
 def fetch_validation_results(plan_id: str) -> Optional[Dict[str, Any]]:
