@@ -14,6 +14,7 @@ Date: February 6, 2026
 from fastapi import APIRouter, HTTPException, Body
 from typing import Dict, Any, Optional
 import logging
+import numpy as np
 
 # LAZY: Agent import moved inside endpoint function
 # from src.core.ai_assistance.agents.transformation_planner_agent import TransformationPlannerAgent
@@ -23,6 +24,38 @@ from src.api.shared_state import submitted_plans
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/planner", tags=["planner"])
+
+
+def convert_numpy_types(obj: Any) -> Any:
+    """
+    Recursively convert numpy types to Python native types for JSON serialization.
+    
+    Handles numpy scalars (bool_, int64, float64, etc.), arrays, and nested structures.
+    """
+    if isinstance(obj, dict):
+        return {key: convert_numpy_types(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_types(item) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(convert_numpy_types(item) for item in obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, (np.integer, np.int64, np.int32, np.int16, np.int8)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float64, np.float32, np.float16)):
+        return float(obj)
+    elif isinstance(obj, (np.bool_, bool)):
+        return bool(obj)
+    elif isinstance(obj, (np.str_, str)):
+        return str(obj)
+    elif obj is None or isinstance(obj, (int, float, str)):
+        return obj
+    else:
+        # For any other type, try to convert to string as fallback
+        try:
+            return str(obj)
+        except:
+            return obj
 
 
 @router.post("/create-plan")
@@ -35,8 +68,8 @@ async def create_transformation_plan(
                 {
                     "issue_type": "high_skew",
                     "severity": "high",
-                    "column": "Volume",
-                    "metrics": {"skewness": 6.9051}
+                    "column": "<your_column_name>",
+                    "metrics": {"skewness": 3.75}
                 }
             ],
             "summary": {"total_issues": 1},
@@ -52,7 +85,7 @@ async def create_transformation_plan(
             "supporting_evidence": [
                 {
                     "pattern": "skew_and_outliers",
-                    "columns": ["Volume"],
+                    "columns": ["<your_column_name>"],
                     "severity": "high"
                 }
             ],
@@ -62,6 +95,10 @@ async def create_transformation_plan(
     rag_context: Optional[str] = Body(
         None,
         description="Optional RAG context for transformation naming standardization"
+    ),
+    signals: Optional[Dict[str, Any]] = Body(
+        None,
+        description="Optional signals from build_explainable_signals for column statistics (min/max)"
     )
 ) -> Dict[str, Any]:
     """
@@ -121,8 +158,8 @@ async def create_transformation_plan(
                 {
                     "issue_type": "high_skew",
                     "severity": "high",
-                    "column": "Volume",
-                    "metrics": {"skewness": 6.9051}
+                    "column": "<your_column_name>",
+                    "metrics": {"skewness": 3.75}
                 }
             ],
             "summary": {"total_issues": 1},
@@ -145,7 +182,7 @@ async def create_transformation_plan(
                 "transformations": [
                     {
                         "transformation_type": "log_transform",
-                        "target_columns": ["Volume"],
+                        "target_columns": ["<your_column_name>"],
                         "parameters": {"base": "natural"},
                         "purpose": "reduce_skewness"
                     }
@@ -217,6 +254,10 @@ async def create_transformation_plan(
             "diagnostics": diagnostics,
             "interpretation": interpretation
         }
+        
+        # Include signals if provided (for column min/max filtering)
+        if signals:
+            planner_input["signals"] = signals
                 # LAZY: Import agent only when endpoint is called (not at startup)
         from src.core.ai_assistance.agents.transformation_planner_agent import TransformationPlannerAgent
                 # Instantiate agent (stateless, no side effects)
@@ -234,7 +275,7 @@ async def create_transformation_plan(
             f"confidence={result.confidence}"
         )
         
-        return response
+        return convert_numpy_types(response)
     
     except HTTPException:
         # Re-raise HTTP exceptions as-is

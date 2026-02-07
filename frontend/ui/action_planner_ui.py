@@ -14,6 +14,8 @@ Date: February 6, 2026
 
 import streamlit as st
 import requests
+import hashlib
+import json
 import json
 from typing import Dict, Any, Optional, List
 import os
@@ -75,6 +77,8 @@ def _initialize_session_state():
     """Initialize session state variables for Action Planner."""
     if "ap_diagnostics" not in st.session_state:
         st.session_state.ap_diagnostics = None
+    if "ap_signals" not in st.session_state:
+        st.session_state.ap_signals = None
     
     if "ap_interpretation" not in st.session_state:
         st.session_state.ap_interpretation = None
@@ -90,6 +94,28 @@ def _initialize_session_state():
     
     if "ap_file_id" not in st.session_state:
         st.session_state.ap_file_id = st.session_state.get("file_id")
+    
+    # Dataset change detection: Clear stale data when dataset changes
+    current_file_id = st.session_state.get("file_id")
+    if current_file_id != st.session_state.ap_file_id:
+        # Dataset changed - clear all cached data
+        st.session_state.ap_diagnostics = None
+        st.session_state.ap_signals = None
+        st.session_state.ap_interpretation = None
+        st.session_state.ap_plans = None
+        st.session_state.ap_approved_plans = {}
+        st.session_state.ap_execution_results = {}
+        st.session_state.ap_file_id = current_file_id
+        st.info("🔄 Dataset changed. Previous analysis cleared. Please run diagnostics for the new dataset.")
+
+
+def _plan_signature(plan: Dict[str, Any]) -> str:
+    """Create a stable signature for a plan so cache/approval matches plan content, not only plan_id."""
+    try:
+        canonical = json.dumps(plan, sort_keys=True, default=str, ensure_ascii=True)
+    except Exception:
+        canonical = str(plan)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 # ============================================================================
@@ -104,25 +130,39 @@ def _render_step_1_interpret():
             "overall dataset stability. This is a **read-only analysis** with no actions."
         )
         
-        # Check if diagnostics are available
-        # TODO: In production, load from actual diagnostics output
-        # For now, use placeholder or session state
+        # Check if dataset is loaded
+        current_file_id = st.session_state.get("file_id")
+        if not current_file_id:
+            st.warning("⚠️ No dataset loaded. Please upload a dataset first.")
+            return
         
-        col1, col2 = st.columns([3, 1])
+        # Show dataset info and action buttons
+        col1, col2, col3 = st.columns([2, 1, 1])
         
         with col1:
             st.caption(
-                "ℹ️ Diagnostics must be run first in the EDA section. "
-                "This step interprets those results."
+                f"ℹ️ Analyzing dataset: **{current_file_id}**"
             )
         
         with col2:
+            if st.button(
+                "🔄 Clear Cache",
+                key="clear_interpretation_cache_btn",
+                use_container_width=True,
+                help="Clear cached interpretation and start fresh"
+            ):
+                st.session_state.ap_interpretation = None
+                st.session_state.ap_diagnostics = None
+                st.session_state.ap_signals = None
+                st.success("Cache cleared!")
+                st.rerun()
+        
+        with col3:
             interpret_button = st.button(
                 "🔍 Interpret Diagnostics",
                 key="interpret_diagnostics_btn",
                 use_container_width=True,
-                type="primary",
-                disabled=False  # TODO: Add check for diagnostics availability
+                type="primary"
             )
         
         if interpret_button:
@@ -132,40 +172,72 @@ def _render_step_1_interpret():
         if st.session_state.ap_interpretation:
             _display_interpretation_results(st.session_state.ap_interpretation)
         else:
-            st.info("👆 Click 'Interpret Diagnostics' to analyze patterns in your data.")
+            st.info("👆 Click 'Interpret Diagnostics' to analyze patterns in your current dataset.")
 
 
 def _run_diagnostics_interpretation():
     """Call the Diagnostics Interpreter API."""
     try:
-        # TODO: Load actual diagnostics from session or EDA results
-        # For now, use sample diagnostics
-        sample_diagnostics = {
-            "diagnostics": [
-                {
-                    "issue_type": "high_skew",
-                    "severity": "high",
-                    "column": "Volume",
-                    "metrics": {"skewness": 6.9051}
-                },
-                {
-                    "issue_type": "outliers",
-                    "severity": "high",
-                    "column": "Volume",
-                    "metrics": {"outlier_percentage": 12.7}
-                }
-            ],
-            "summary": {"total_issues": 2, "high_severity_count": 2},
-            "metadata": {"timestamp": "2026-02-06"}
-        }
+        # Get current file_id from session state
+        current_file_id = st.session_state.get("file_id")
         
-        st.session_state.ap_diagnostics = sample_diagnostics
+        if not current_file_id:
+            st.error("⚠️ No dataset loaded. Please upload a dataset first in the Upload section.")
+            return
         
-        with st.spinner("Interpreting diagnostics..."):
+        # STEP 1: Build actual diagnostics from the current dataset
+        with st.spinner("🔍 Analyzing current dataset..."):
+            try:
+                diag_response = requests.post(
+                    f"{BACKEND_URL}/api/diagnostics/build",
+                    json={
+                        "file_id": current_file_id,
+                        "target_columns": None  # Analyze all columns
+                    },
+                    timeout=30
+                )
+                
+                if diag_response.status_code != 200:
+                    st.error(f"Failed to build diagnostics: {diag_response.status_code} - {diag_response.text}")
+                    return
+                
+                diagnostics_result = diag_response.json()
+                actual_diagnostics = diagnostics_result.get("diagnostics", {})
+                actual_signals = diagnostics_result.get("signals", {})
+                
+                if not actual_diagnostics:
+                    st.warning("No diagnostics were generated for this dataset.")
+                    return
+                
+                # Store both diagnostics AND signals for downstream use
+                st.session_state.ap_diagnostics = actual_diagnostics
+                st.session_state.ap_signals = actual_signals  # Store signals for transformation filtering
+                
+                # Debug: Show diagnostics structure
+                num_issues = actual_diagnostics.get("summary", {}).get("total_issues", 0)
+                st.success(f"✅ Built diagnostics: {num_issues} issues detected")
+                
+                # Extract affected columns from diagnostics for debugging
+                with st.expander("📊 Diagnostics Summary", expanded=False):
+                    diag_list = actual_diagnostics.get("diagnostics", [])
+                    if diag_list:
+                        st.markdown("**Issues Found:**")
+                        for diag in diag_list[:5]:  # Show first 5
+                            col = diag.get("affected_columns", diag.get("column", "N/A"))
+                            issue = diag.get("issue_type", "N/A")
+                            sev = diag.get("severity", "N/A")
+                            st.markdown(f"- `{col}` → {issue} (severity: {sev})")
+                
+            except Exception as e:
+                st.error(f"Error building diagnostics: {e}")
+                return
+        
+        # STEP 2: Interpret the diagnostics
+        with st.spinner("🤖 Interpreting diagnostics patterns..."):
             response = requests.post(
                 f"{BACKEND_URL}/api/diagnostics/interpret",
                 json={
-                    "diagnostics_input": sample_diagnostics,
+                    "diagnostics_input": actual_diagnostics,
                     "rag_context": None
                 },
                 timeout=30
@@ -189,6 +261,25 @@ def _display_interpretation_results(interpretation: Dict[str, Any]):
     """Display interpretation results."""
     st.markdown("#### 📋 Interpretation Results")
     
+    # Show dataset context
+    current_file_id = st.session_state.get("file_id")
+    st.caption(f"📁 Based on dataset: **{current_file_id}**")
+    
+    # Extract and display affected columns from diagnostics
+    if st.session_state.ap_diagnostics:
+        affected_cols = set()
+        diag_list = st.session_state.ap_diagnostics.get("diagnostics", [])
+        for diag in diag_list:
+            col = diag.get("affected_columns", diag.get("column"))
+            if col:
+                if isinstance(col, list):
+                    affected_cols.update(col)
+                else:
+                    affected_cols.add(col)
+        
+        if affected_cols:
+            st.info(f"🎯 **Columns with issues:** {', '.join(f'`{c}`' for c in sorted(affected_cols))}")
+    
     col1, col2 = st.columns(2)
     
     with col1:
@@ -206,13 +297,49 @@ def _display_interpretation_results(interpretation: Dict[str, Any]):
         for pattern in patterns:
             st.markdown(f"- `{pattern.replace('_', ' ').title()}`")
     
-    # Supporting evidence
+    # Supporting evidence with affected columns
     evidence = interpretation.get("supporting_evidence", [])
     if evidence:
-        with st.expander("📑 Supporting Evidence", expanded=False):
+        with st.expander("📑 **Supporting Evidence**", expanded=True):
             for idx, ev in enumerate(evidence, 1):
                 st.markdown(f"**Evidence {idx}:**")
-                st.json(ev)
+                
+                # Show pattern and affected columns prominently
+                if "pattern" in ev:
+                    st.markdown(f"**Pattern:** `{ev['pattern']}`")
+                
+                # Look for columns in various possible keys
+                cols = (ev.get("columns") or 
+                       ev.get("affected_columns") or 
+                       ev.get("column") or 
+                       [])
+                
+                # Convert single column to list
+                if isinstance(cols, str):
+                    cols = [cols]
+                
+                if cols:
+                    st.markdown(f"**Affected Columns:** {', '.join(f'`{c}`' for c in cols)}")
+                else:
+                    # Fallback: extract from diagnostics in session state
+                    if st.session_state.ap_diagnostics:
+                        diag_cols = set()
+                        for diag in st.session_state.ap_diagnostics.get("diagnostics", []):
+                            col = diag.get("affected_columns", diag.get("column"))
+                            if col:
+                                if isinstance(col, list):
+                                    diag_cols.update(col)
+                                else:
+                                    diag_cols.add(col)
+                        if diag_cols:
+                            st.markdown(f"**Affected Columns (from diagnostics):** {', '.join(f'`{c}`' for c in sorted(diag_cols))}")
+                    
+                if "severity" in ev:
+                    st.markdown(f"**Severity:** {ev['severity'].upper()}")
+                
+                # Show full details in collapsed JSON
+                with st.expander("Full Details", expanded=False):
+                    st.json(ev)
 
 
 # ============================================================================
@@ -261,13 +388,20 @@ def _run_transformation_planner():
     """Call the Transformation Planner API."""
     try:
         with st.spinner("Generating transformation plans..."):
+            # Prepare request payload with signals (if available)
+            payload = {
+                "diagnostics": st.session_state.ap_diagnostics,
+                "interpretation": st.session_state.ap_interpretation,
+                "rag_context": None
+            }
+            
+            # Include signals for smart transformation filtering
+            if "ap_signals" in st.session_state and st.session_state.ap_signals:
+                payload["signals"] = st.session_state.ap_signals
+            
             response = requests.post(
                 f"{BACKEND_URL}/api/planner/create-plan",
-                json={
-                    "diagnostics": st.session_state.ap_diagnostics,
-                    "interpretation": st.session_state.ap_interpretation,
-                    "rag_context": None
-                },
+                json=payload,
                 timeout=30
             )
             
@@ -378,7 +512,7 @@ def _render_step_3_approve():
                     st.markdown(f"**{plan_id}**")
                 
                 with col2:
-                    approval_status = _get_plan_approval_status(plan_id)
+                    approval_status = _get_plan_approval_status(plan_id, plan)
                     if approval_status == "APPROVED":
                         st.success("✅ APPROVED")
                     elif approval_status == "REJECTED":
@@ -439,6 +573,8 @@ def _approve_plan(plan: Dict[str, Any], decision: str):
             
             if response.status_code == 200:
                 approval_record = response.json()
+                # Cache approval keyed by plan_id *and* plan content
+                approval_record["_plan_sig"] = _plan_signature(plan)
                 st.session_state.ap_approved_plans[plan_id] = approval_record
                 st.success(f"✅ Plan {plan_id} {decision}d successfully!")
                 st.rerun()
@@ -451,11 +587,22 @@ def _approve_plan(plan: Dict[str, Any], decision: str):
         st.error(f"Unexpected error: {e}")
 
 
-def _get_plan_approval_status(plan_id: str) -> str:
-    """Get approval status for a plan."""
-    if plan_id in st.session_state.ap_approved_plans:
-        return st.session_state.ap_approved_plans[plan_id].get("status", "PENDING")
-    return "PENDING"
+def _get_plan_approval_status(plan_id: str, plan: Optional[Dict[str, Any]] = None) -> str:
+    """Get approval status; if plan content changed, treat as PENDING to force re-review."""
+    if plan_id not in st.session_state.ap_approved_plans:
+        return "PENDING"
+
+    record = st.session_state.ap_approved_plans[plan_id]
+    status = record.get("status", "PENDING")
+
+    if plan is None:
+        return status
+
+    cached_sig = record.get("_plan_sig")
+    current_sig = _plan_signature(plan)
+    if cached_sig and cached_sig != current_sig:
+        return "PENDING"
+    return status
 
 
 # ============================================================================
@@ -473,7 +620,7 @@ def _render_step_4_execute():
         # Check if there are any approved plans
         approved_plans = [
             plan for plan in (st.session_state.ap_plans or [])
-            if _get_plan_approval_status(plan.get("plan_id")) == "APPROVED"
+            if _get_plan_approval_status(plan.get("plan_id"), plan) == "APPROVED"
         ]
         
         if not approved_plans:
@@ -501,6 +648,7 @@ def _render_step_4_execute():
         
         for plan in approved_plans:
             plan_id = plan.get("plan_id")
+            plan_sig = _plan_signature(plan)
             
             with st.container():
                 col1, col2, col3 = st.columns([2, 1, 1])
@@ -518,13 +666,18 @@ def _render_step_4_execute():
                     execute_btn = st.button(
                         "🚀 Execute",
                         key=f"execute_{plan_id}",
-                        disabled=(plan_id in st.session_state.ap_execution_results),
+                        # Allow retry if previous attempt FAILED, or if the plan content changed.
+                        disabled=(
+                            plan_id in st.session_state.ap_execution_results
+                            and st.session_state.ap_execution_results[plan_id].get("execution_status") == "SUCCESS"
+                            and st.session_state.ap_execution_results[plan_id].get("_plan_sig") == plan_sig
+                        ),
                         use_container_width=True,
                         type="primary"
                     )
                     
                     if execute_btn:
-                        _execute_plan(plan_id, file_id)
+                        _execute_plan(plan, file_id)
                 
                 with col3:
                     if plan_id in st.session_state.ap_execution_results:
@@ -542,9 +695,11 @@ def _render_step_4_execute():
                 st.markdown("---")
 
 
-def _execute_plan(plan_id: str, file_id: str):
+def _execute_plan(plan: Dict[str, Any], file_id: str):
     """Call the Execution API to execute an approved plan."""
     try:
+        plan_id = plan.get("plan_id")
+        plan_sig = _plan_signature(plan)
         with st.spinner(f"Executing plan {plan_id}..."):
             response = requests.post(
                 f"{BACKEND_URL}/api/execution/execute-plan",
@@ -557,6 +712,7 @@ def _execute_plan(plan_id: str, file_id: str):
             
             if response.status_code == 200:
                 result = response.json()
+                result["_plan_sig"] = plan_sig
                 st.session_state.ap_execution_results[plan_id] = result
                 
                 if result.get("execution_status") == "SUCCESS":

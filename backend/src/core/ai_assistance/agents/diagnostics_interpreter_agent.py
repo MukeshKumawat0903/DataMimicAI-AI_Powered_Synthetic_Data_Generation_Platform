@@ -335,14 +335,17 @@ class DiagnosticsInterpreterAgent:
                 if d.get("issue_type") in required_types
             ]
             
-            # Extract affected columns
+            # Extract affected columns (prefer diagnostics_builder output)
             affected_columns = set()
             for issue in matching_issues:
-                col = issue.get("column", issue.get("columns"))
-                if isinstance(col, list):
-                    affected_columns.update(col)
-                elif col:
-                    affected_columns.add(col)
+                cols = issue.get("affected_columns")
+                if not cols:
+                    cols = issue.get("column", issue.get("columns"))
+
+                if isinstance(cols, list):
+                    affected_columns.update(cols)
+                elif cols:
+                    affected_columns.add(cols)
             
             evidence.append({
                 "pattern": pattern_name,

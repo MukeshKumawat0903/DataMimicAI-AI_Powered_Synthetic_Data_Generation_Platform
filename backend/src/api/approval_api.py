@@ -42,7 +42,7 @@ async def review_plan(
             "proposed_transformations": [
                 {
                     "transformation": "log_transform",
-                    "target_columns": ["Volume"],
+                    "target_columns": ["<your_column_name>"],
                     "rationale": "Reduce skewness",
                     "parameters": {"base": "natural"}
                 }
@@ -59,7 +59,7 @@ async def review_plan(
     reviewer_notes: Optional[str] = Body(
         None,
         description="Optional notes from the reviewer",
-        example="Approved after validating no negative values in Volume column"
+        example="Approved after validating no negative values in target column"
     )
 ) -> Dict[str, Any]:
     """
@@ -141,8 +141,9 @@ async def review_plan(
         )
         
         # Store submitted plan for pending list tracking
-        if plan_id not in _submitted_plans:
-            _submitted_plans[plan_id] = plan
+        # Always update the stored plan for this plan_id so execution uses
+        # the exact plan that was reviewed/approved.
+        _submitted_plans[plan_id] = plan
         
         # LAZY: Get approval gate on-demand (only when endpoint is called)
         _approval_gate = get_approval_gate()

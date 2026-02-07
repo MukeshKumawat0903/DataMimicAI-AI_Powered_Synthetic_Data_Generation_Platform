@@ -219,7 +219,8 @@ class TransformationPlannerAgent:
         evidence = interpretation.get("supporting_evidence", [])
         
         # STEP 2: Generate plans for each pattern (deterministic)
-        plans = self._generate_plans(patterns, evidence, diagnostics)
+        # Pass full planner_input so _generate_plans can access signals
+        plans = self._generate_plans(patterns, evidence, planner_input)
         
         # STEP 3: Calculate confidence (deterministic)
         confidence = self._calculate_confidence(interpretation, diagnostics)
@@ -251,7 +252,7 @@ class TransformationPlannerAgent:
         self,
         patterns: List[str],
         evidence: List[Dict[str, Any]],
-        diagnostics: Dict[str, Any]
+        planner_input: Dict[str, Any]
     ) -> List[TransformationPlan]:
         """
         Generate transformation plans for detected patterns.
@@ -262,8 +263,8 @@ class TransformationPlannerAgent:
             Dominant issue patterns from interpretation
         evidence : list
             Supporting evidence from interpretation
-        diagnostics : dict
-            Full diagnostics output
+        planner_input : dict
+            Full planner input containing diagnostics and signals
         
         Returns
         -------
@@ -294,14 +295,26 @@ class TransformationPlannerAgent:
             # Extract affected columns
             affected_columns = pattern_evidence.get("affected_columns", [])
             
+            # Get column statistics for smart filtering (if available)
+            column_stats = self._get_column_statistics(planner_input, affected_columns)
+            
             # Build transformation proposals
             proposals = []
             for transformation in sorted(rule["transformations"]):  # Sort for determinism
-                proposals.append({
-                    "transformation": transformation,
-                    "target_columns": sorted(affected_columns),  # Sort for determinism
-                    "rationale": rule["rationale_template"]
-                })
+                # SMART FILTERING: Skip transformations incompatible with column values
+                filtered_columns = self._filter_compatible_columns(
+                    transformation, 
+                    affected_columns, 
+                    column_stats
+                )
+                
+                # Only add transformation if at least one column is compatible
+                if filtered_columns:
+                    proposals.append({
+                        "transformation": transformation,
+                        "target_columns": sorted(filtered_columns),  # Sort for determinism
+                        "rationale": rule["rationale_template"]
+                    })
             
             # Create plan
             plan = TransformationPlan(
@@ -315,6 +328,114 @@ class TransformationPlannerAgent:
             plans.append(plan)
         
         return plans
+    
+    def _get_column_statistics(
+        self,
+        planner_input: Dict[str, Any],
+        affected_columns: List[str]
+    ) -> Dict[str, Dict[str, Any]]:
+        """
+        Extract column statistics from signals (if available).
+        
+        Parameters
+        ----------
+        planner_input : dict
+            Full planner input containing diagnostics and signals
+        affected_columns : list
+            Columns to get statistics for
+        
+        Returns
+        -------
+        dict
+            Dictionary mapping column names to their statistics (min, max, etc.)
+        """
+        column_stats = {}
+        
+        # Check if signals are available in planner input
+        signals = planner_input.get("signals", {})
+        if not signals:
+            logger.debug("No signals available for column statistics")
+            return column_stats
+        
+        columns_info = signals.get("columns", {})
+        
+        for col in affected_columns:
+            if col in columns_info:
+                col_info = columns_info[col]
+                if isinstance(col_info, dict):
+                    column_stats[col] = {
+                        "min": col_info.get("min"),
+                        "max": col_info.get("max"),
+                        "type": col_info.get("type"),
+                        "negative_count": col_info.get("negative_count", 0),
+                        "zeros_count": col_info.get("zeros_count", 0)
+                    }
+        
+        return column_stats
+    
+    def _filter_compatible_columns(
+        self,
+        transformation: str,
+        columns: List[str],
+        column_stats: Dict[str, Dict[str, Any]]
+    ) -> List[str]:
+        """
+        Filter columns that are compatible with the given transformation.
+        
+        This prevents proposing transformations that will fail during execution.
+        
+        Parameters
+        ----------
+        transformation : str
+            Transformation type (e.g., "log_transform", "sqrt_transform")
+        columns : list
+            Candidate columns for transformation
+        column_stats : dict
+            Column statistics (min, max, etc.)
+        
+        Returns
+        -------
+        list
+            Filtered list of compatible columns
+        """
+        # If no statistics available, return all columns (fail-safe behavior)
+        if not column_stats:
+            return columns
+        
+        compatible_columns = []
+        
+        for col in columns:
+            stats = column_stats.get(col, {})
+            min_val = stats.get("min")
+            
+            # Check transformation compatibility
+            is_compatible = True
+            
+            # log_transform requires strictly positive values (min > 0)
+            if transformation == "log_transform":
+                if min_val is not None and min_val <= 0:
+                    logger.info(
+                        f"Skipping log_transform for column '{col}': "
+                        f"contains non-positive values (min={min_val})"
+                    )
+                    is_compatible = False
+            
+            # sqrt_transform requires non-negative values (min >= 0)
+            elif transformation == "sqrt_transform":
+                if min_val is not None and min_val < 0:
+                    logger.info(
+                        f"Skipping sqrt_transform for column '{col}': "
+                        f"contains negative values (min={min_val})"
+                    )
+                    is_compatible = False
+            
+            # Add other transformation-specific rules here as needed
+            # (e.g., winsorization, scaling are generally safe for all numeric columns)
+            
+            if is_compatible:
+                compatible_columns.append(col)
+        
+        return compatible_columns
     
     def _calculate_confidence(
         self,
