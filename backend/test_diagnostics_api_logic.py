@@ -7,7 +7,7 @@ This script tests the diagnostics_api without starting the full FastAPI server.
 import sys
 sys.path.insert(0, 'D:/Learnings/My_Projects/Learning_Projects/DataMimicAI-AI_Powered_Synthetic_Data_Generation_Platform/backend')
 
-from src.core.agents.diagnostics_interpreter_agent import DiagnosticsInterpreterAgent
+from src.core.ai_assistance.agents.diagnostics_interpreter_agent import DiagnosticsInterpreterAgent
 
 # Sample diagnostics input (from the agent's docstring example)
 diagnostics_input = {

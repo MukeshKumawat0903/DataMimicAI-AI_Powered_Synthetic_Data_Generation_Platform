@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, Body
 from typing import Dict, Any, Optional
 import logging
 
-from src.core.agents.transformation_planner_agent import TransformationPlannerAgent
+from src.core.ai_assistance.agents.transformation_planner_agent import TransformationPlannerAgent
 from src.api.shared_state import submitted_plans
 
 logger = logging.getLogger(__name__)

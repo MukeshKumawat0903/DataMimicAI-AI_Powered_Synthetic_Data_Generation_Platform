@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Body, Path
 from typing import Dict, Any, List, Optional
 import logging
 
-from src.core.approval.plan_review_gate import (
+from src.core.ai_assistance.approval.plan_review_gate import (
     PlanReviewAndApprovalGate,
     ApprovalStatus
 )

@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, Body
 from typing import Dict, Any, Optional
 import logging
 
-from src.core.agents.diagnostics_interpreter_agent import DiagnosticsInterpreterAgent
+from src.core.ai_assistance.agents.diagnostics_interpreter_agent import DiagnosticsInterpreterAgent
 
 logger = logging.getLogger(__name__)
 

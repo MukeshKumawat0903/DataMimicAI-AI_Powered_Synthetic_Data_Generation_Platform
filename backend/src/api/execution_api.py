@@ -23,7 +23,7 @@ from src.core.execution.deterministic_execution_engine import (
 )
 from src.core.validation.validation_feedback_loop import ValidationFeedbackLoop
 from src.core.validation.validation_storage import get_validation_store
-from src.core.approval.plan_review_gate import ApprovalStatus
+from src.core.ai_assistance.approval.plan_review_gate import ApprovalStatus
 from src.api.shared_state import approval_gate, submitted_plans
 
 logger = logging.getLogger(__name__)

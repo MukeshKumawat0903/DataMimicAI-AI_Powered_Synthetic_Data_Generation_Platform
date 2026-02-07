@@ -9,7 +9,7 @@ Date: February 6, 2026
 """
 
 from typing import Dict, Any
-from src.core.approval.plan_review_gate import PlanReviewAndApprovalGate
+from src.core.ai_assistance.approval.plan_review_gate import PlanReviewAndApprovalGate
 
 # Global approval gate instance (in-memory, with optional persistence)
 # Shared between approval_api and execution_api
