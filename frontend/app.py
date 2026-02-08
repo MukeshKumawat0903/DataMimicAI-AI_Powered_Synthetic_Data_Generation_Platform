@@ -94,22 +94,27 @@ def show_eda_and_feature_engineering():
     
     elif st.session_state.explore_mode == 'ai':
         # AI Assistance UI with LLM pipeline integration
-        ai_tab1, ai_tab2, ai_tab3, ai_tab4 = st.tabs([
+        # Temporarily hide the Privacy & Risk Audit tab from the UI.
+        # The tab and its message are retained (commented) for easy restoration later.
+        ai_tab1, ai_tab2, ai_tab3 = st.tabs([
             "🔍 Diagnostics",
             "🤖 Action Planner",
-            "⚠️ Privacy & Risk Audit",
+            # "⚠️ Privacy & Risk Audit",  # hidden for now
             "📄 Decision Report"
         ])
         with ai_tab1:
             # STEP 7: UI Integration - Delegated to helper module
             show_explanation_tab()
-        
+
         with ai_tab2:
             # Action Planner - Complete transformation pipeline
             show_action_planner_tab()
+
+        # Hidden privacy tab (commented out for future use):
+        # with ai_tab3:
+        #     st.info("⚠️ **Privacy & Risk Audit**: Coming soon - Automated privacy risk assessment and data quality audit. Read-only analysis of potential vulnerabilities.")
+
         with ai_tab3:
-            st.info("⚠️ **Privacy & Risk Audit**: Coming soon - Automated privacy risk assessment and data quality audit. Read-only analysis of potential vulnerabilities.")
-        with ai_tab4:
             # Decision Report - Display validation results
             show_decision_report_tab()
 
