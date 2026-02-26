@@ -191,4 +191,7 @@ def handle_file_upload():
             except Exception as e:
                 st.error(f"Upload error: {str(e)}")
     else:
-        st.info("Dataset uploaded. Proceed with generation.")
+        st.info(
+            "✅ Dataset loaded. Click **Next: Explore & Configure ➡️** to profile, transform, "
+            "and prepare your data before generating synthetic data."
+        )

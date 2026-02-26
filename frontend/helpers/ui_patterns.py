@@ -550,28 +550,38 @@ def onboarding_tour():
         - Instant overview: shape, column types, missing values, basic stats
         - Quickly spot schema issues before moving ahead
 
-        ## 3) 🔍 Explore, Engineer, Analyze
-        Inside **Data Exploration** you'll find:
+        ## 3) 🔍 Explore & Configure
+        Inside **Explore & Configure** you'll find two modes:
+
+        **📊 Data Analysis:**
         - 📄 **Data Profiling** — summary, types, distributions
-        - 🧠 **Feature Suggestions** — smart ideas for transformations
+        - 💡 **Feature Suggestions** — AI-powered transformation ideas with inline preview
         - 📊 **Correlation** — relationships at a glance
-        - ⚠️ **Outliers & Drift** — detect anomalies and potential drift
+        - ⚠️ **Outlier Detection** — detect anomalies and apply remediation
+        - 🔒 **Privacy Audit** — PII detection and re-identification risk scoring
+        - ⏰ **Time-Series Analysis** — temporal pattern detection and stationarity tests
+
+        **🤖 AI Assistance:**
+        - 🔍 **Diagnostics** — LLM-powered natural language data analysis
+        - 🤖 **Action Planner** — guided 4-step transformation pipeline with human approval
+        - 📄 **Decision Report** — factual before/after metric comparison for executed plans
 
         ## 4) ⚙️ Generate Synthetic Data
         Choose the approach that fits your needs:
-        - 🚀 **Standard Models (SDV)** — CTGAN, TVAE, GaussianCopula
-        - 💎 **Advanced / AutoML (SynthCity)** — single‑model tuning or best‑model selection
-        - ✍️ **LLM‑Powered** — prompt/schema‑guided generation (experimental)
+        - 🚀 **Standard Models (SDV)** — CTGAN, TVAE, GaussianCopula; fast and reliable
+        - 💎 **Advanced / AutoML (SynthCity)** — DDPM, PrivBayes, PATE-GAN, DP-GAN, and more; single‑model or best‑model AutoML
+        - ✍️ **LLM‑Powered** — prompt/schema‑based generation *(coming soon)*
 
         ## 5) ✅ Validate & Refine
-        - Quality report and visual comparisons (original vs synthetic)
-        - Track versions, review scores, and **refine iteratively** with recommendations
+        - **Quality Report** — AI-scored quality assessment with issue detection
+        - **Detailed Analysis** — distribution plots, correlation drift, and side-by-side comparisons
+        - **Iterative Refinement** — track versions, apply recommendations, and regenerate with improved parameters
 
         ---
         ### 💡 Tips
         - Use the **sidebar stepper** to jump between steps anytime
-        - The **sticky action bar** shows context‑aware actions with **inline previews**
-        - **Apply suggestions** stays in Explore & Configure - preview changes inline before moving forward
+        - The **sticky action bar** shows context‑aware quick preview and undo actions
+        - **Apply suggestions** stays in Explore & Configure — preview column changes inline before moving forward
         - **Quick Actions** in the sidebar let you download original or synthetic data
         - Try **Demo Mode** for fast trials — no upload required
         """, unsafe_allow_html=True)
@@ -611,26 +621,30 @@ def show_feature_highlights():
         col1, col2 = st.columns(2)
         with col1:
             show_new_feature_badge("Inline Feature Preview")
-            st.write("Apply suggestions and preview changes without leaving Explore & Configure")
+            st.write("Apply EDA suggestions and preview column changes inline — no step-switching needed.")
             
             st.markdown("---")
             show_new_feature_badge("Advanced AutoML Models")
-            st.write("Use SynthCity's best-model selector for optimal results")
+            st.write("SynthCity models: DDPM, PrivBayes, PATE-GAN, DP-GAN, and best-model AutoML selection.")
             if st.button("Try Now →", key="try_automl"):
-                st.session_state.current_step = 1
+                st.session_state.current_step = 2
                 st.rerun()
             
             st.markdown("---")
-            st.markdown("### 🎯 Smart Preview")
-            st.write("Get instant data quality insights before generation")
+            show_new_feature_badge("AI Diagnostics & Action Planner")
+            st.write("LLM-powered diagnostics, 4-step transformation pipeline with human-in-the-loop approval, and a Decision Report.")
             
         with col2:
-            st.markdown("### 📊 Enhanced Visualizations")
-            st.write("Compare distributions and validate synthetic data quality")
+            show_new_feature_badge("Iterative Refinement Engine")
+            st.write("Track generation versions, review quality scores, and re-generate with AI recommendations.")
             
             st.markdown("---")
-            st.markdown("### 🔄 Seamless Workflow")
-            st.write("Stay in context with inline previews and smart navigation")
+            show_new_feature_badge("Privacy Audit & Time-Series")
+            st.write("PII detection, re-identification risk scoring, and temporal pattern analysis.")
+            
+            st.markdown("---")
+            st.markdown("### 🎯 Smart Preview")
+            st.write("Instant auto-analysis: shape, types, missing values, and duplicates on upload.")
 
 def quick_actions_panel():
     """Display quick action shortcuts in sidebar."""
@@ -664,7 +678,7 @@ def quick_actions_panel():
     
     # Jump to Results
     if st.session_state.get('generated_file_id'):
-        if st.button("📊 Jump to Visualization", key="jump_to_viz", help="View visualization results"):
+        if st.button("📊 Jump to Validate & Refine", key="jump_to_viz", help="View quality reports, analysis, and iterative refinement"):
             st.session_state.current_step = 3
             st.rerun()
     
@@ -802,8 +816,8 @@ def smart_preview_section(df, file_id):
                 }
                 </style>
                 <div class="datamimic-perfect">
-                  <span style="font-size:1.5rem;">🎉</span> <b>Ready to Generate!</b><br>
-                  Your data looks perfect. You can move to the next step to generate synthetic data.
+                  <span style="font-size:1.5rem;">🎉</span> <b>Data Looks Great!</b><br>
+                  No missing values or duplicates detected. Use <b>Next: Explore &amp; Configure ➡️</b> to profile, transform, and prepare your data before generating.
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -820,8 +834,8 @@ def smart_preview_section(df, file_id):
             else:
                 st.dataframe(df.head(10), use_container_width=True)
 
-        st.info("➡️ Switch to **Generation** to create synthetic data.")
+        st.info("➡️ Ready? Click **Next: Explore & Configure ➡️** to analyze and transform your data before generating.")
     elif file_id and df is None:
         st.error("Error: File uploaded but no data found! Please re-upload or try a different file.")
     else:
-        st.info("Please upload your dataset in the **Data Upload** tab.")
+        st.info("Please upload your dataset in the **Data Upload** tab to get started.")

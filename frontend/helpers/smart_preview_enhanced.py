@@ -824,7 +824,7 @@ def smart_preview_with_comparisons(df, file_id: str):
             type_summary.append(f'<span class="type-badge">{icon} {dtype}: {count}</span>')
         
         st.markdown(f'<div style="line-height: 2.2;">{"".join(type_summary)}</div>', unsafe_allow_html=True)
-        st.caption("*Full type details available in EDA section*")
+        st.caption("*Full type details available in Explore & Configure*")
     
     st.markdown("<br>", unsafe_allow_html=True)
     
