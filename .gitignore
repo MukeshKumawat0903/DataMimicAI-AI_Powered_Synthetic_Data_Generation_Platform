@@ -9,3 +9,5 @@ notebooks
 *Learning_AI
 .env
 *backend/src/core/explainability/docs
+*docs
+*.log
