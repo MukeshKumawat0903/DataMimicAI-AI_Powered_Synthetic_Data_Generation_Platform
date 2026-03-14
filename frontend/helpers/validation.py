@@ -260,7 +260,7 @@ def _show_quality_report():
     
     with col2:
         if st.button("🔁 View Refinement Options", use_container_width=True):
-            st.info("� Switch to the **Iterative Refinement** tab to see detailed recommendations and regeneration options")
+            st.info("💡 Switch to the **Iterative Refinement** tab to see detailed recommendations and regeneration options")
     
     with col3:
         if st.button("📊 Export Quality Metrics", use_container_width=True):
@@ -746,9 +746,10 @@ def _show_refinement_placeholder():
             
             new_algorithm = st.selectbox(
                 "Algorithm",
-                options=["GaussianCopula", "CTGAN", "TVAE", "TabDDPM", "DP-GAN"],
+                options=["GaussianCopula", "CTGAN", "TVAE", "PARS", "ddpm", "dpgan", "privbayes", "pategan"],
                 index=0,
-                key="manual_algorithm"
+                key="manual_algorithm",
+                help="SDV: GaussianCopula, CTGAN, TVAE, PARS — SynthCity: ddpm, dpgan, privbayes, pategan"
             )
             
             new_epochs = st.number_input("Epochs", min_value=100, max_value=1000, value=300, step=50, key="manual_epochs")
