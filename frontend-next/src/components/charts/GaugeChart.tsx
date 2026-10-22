@@ -1,6 +1,6 @@
 "use client";
 
-import { RadialBarChart, RadialBar, ResponsiveContainer, Tooltip } from "recharts";
+import { RadialBarChart, RadialBar, PolarAngleAxis, ResponsiveContainer, Tooltip } from "recharts";
 
 interface GaugeChartProps {
   value: number; // 0–100
@@ -31,6 +31,8 @@ export function GaugeChart({ value, label, size = 120 }: GaugeChartProps) {
             startAngle={90}
             endAngle={-270}
           >
+            {/* Fixed 0–100 scale; without it the single bar always fills the ring */}
+            <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
             <RadialBar dataKey="value" background cornerRadius={4} />
             <Tooltip formatter={(v) => `${Number(v).toFixed(0)}/100`} />
           </RadialBarChart>

@@ -1,0 +1,74 @@
+{
+  "file_id": "7b35c121-5cd2-4792-bb20-50ba07f1b5d8",
+  "timestamp": "2026-10-22T09:36:31.383306",
+  "fast_scan": {
+    "summary": {
+      "total_columns": 10,
+      "pii_columns_detected": 3,
+      "scan_type": "fast",
+      "sample_size": 999
+    },
+    "detections": [
+      {
+        "column": "name",
+        "pii_types": [
+          "NAME"
+        ],
+        "confidence": 0.7,
+        "match_count": 0,
+        "detection_method": [
+          "column_name"
+        ]
+      },
+      {
+        "column": "gppd_idnr",
+        "pii_types": [
+          "ID"
+        ],
+        "confidence": 0.7,
+        "match_count": 0,
+        "detection_method": [
+          "column_name"
+        ]
+      },
+      {
+        "column": "capacity_mw",
+        "pii_types": [
+          "ADDRESS"
+        ],
+        "confidence": 0.7,
+        "match_count": 0,
+        "detection_method": [
+          "column_name"
+        ]
+      }
+    ]
+  },
+  "deep_scan": {},
+  "summary": {
+    "total_columns": 10,
+    "columns_with_pii": 3,
+    "high_risk_columns": 3,
+    "high_risk_column_list": [
+      "gppd_idnr",
+      "capacity_mw",
+      "name"
+    ],
+    "scan_type": "fast",
+    "sample_size": 999,
+    "recommendations": [
+      {
+        "priority": "HIGH",
+        "issue": "3 columns contain PII",
+        "recommendation": "Consider anonymization, pseudonymization, or removal before sharing data"
+      }
+    ],
+    "fast_scan": {
+      "total_columns": 10,
+      "pii_columns_detected": 3,
+      "scan_type": "fast",
+      "sample_size": 999
+    },
+    "deep_scan": {}
+  }
+}

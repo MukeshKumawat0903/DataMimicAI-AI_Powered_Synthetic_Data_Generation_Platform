@@ -15,6 +15,7 @@ import pandas as pd
 import numpy as np
 from typing import Optional, List
 from fastapi import FastAPI, UploadFile, Depends, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +50,21 @@ from src.api.execution_api import router as execution_router
 from src.core.synth.config import advanced_models, metric_cols
 
 app = FastAPI()
+
+# Allow the Next.js frontend (a different origin) to call the API from the browser.
+# Any localhost port is allowed because `next dev` moves to 3001+ when 3000 is busy;
+# add other hosts with a comma-separated CORS_ORIGINS env var.
+CORS_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
+)
+
 app.include_router(eda_feature_router)
 app.include_router(feedback_router)
 app.include_router(llm_router)
@@ -172,7 +188,17 @@ async def upload_dataset(file: UploadFile):
         # ON-DEMAND ONLY: PII scan runs when user explicitly requests it via EDA API.
         # This keeps application startup fast and prevents background work.
 
-        return {"file_id": file_id}
+        sample_data = sanitize_json(
+            df.head().replace({np.nan: None}).to_dict(orient="records")
+        )
+
+        return {
+            "file_id": file_id,
+            "columns": df.columns.tolist(),
+            "num_rows": len(df),
+            "num_columns": len(df.columns),
+            "sample_data": sample_data,
+        }
 
     except pd.errors.ParserError as e:
         logger.error(f"CSV parsing error: {e}")
@@ -517,23 +543,30 @@ async def visualize_data(
         from src.core.visualization import DataVisualizer
         visualizer = DataVisualizer(real_data, synthetic_data, metadata)
 
+        # Default to numeric columns: these plots coerce values to numbers,
+        # so a text column (often the first one) would render empty.
+        default_cols = (
+            real_data.select_dtypes(include="number").columns.tolist()
+            or real_data.columns.tolist()
+        )
+
         if tab == "distribution":
             if not column:
-                column = real_data.columns[0]
+                column = default_cols[0]
             html = visualizer.distribution_plot(column, plot_type, overlay)
         elif tab == "pairplot":
             if not columns:
-                columns = ",".join(real_data.columns[:2])
+                columns = ",".join(default_cols[:2])
             cols = [c.strip() for c in columns.split(",")]
             html = visualizer.pair_plot(cols, overlay)
         elif tab == "real_vs_synth":
             if not columns:
-                columns = ",".join(real_data.columns[:2])
+                columns = ",".join(default_cols[:2])
             cols = [c.strip() for c in columns.split(",")]
             html = visualizer.real_vs_synth_summary(cols)
         elif tab == "drift":
             if not columns:
-                columns = ",".join(real_data.columns[:2])
+                columns = ",".join(default_cols[:2])
             cols = [c.strip() for c in columns.split(",")]
             html = visualizer.drift_detection(cols)
         elif tab == "correlation":

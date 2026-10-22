@@ -23,13 +23,28 @@ interface TimeSeriesDetectionResult {
   metadata?: Record<string, unknown>;
 }
 
+// Backend response shape from POST /eda/detect-timeseries/{file_id}
+interface BackendTimeSeriesResponse {
+  detection?: {
+    datetime_columns?: string[];
+    primary_datetime_column?: string | null;
+    frequency?: string | null;
+    is_regular?: boolean;
+  };
+}
+
 function useTimeSeriesDetection(fileId: string | null, enabled: boolean) {
   return useQuery<TimeSeriesDetectionResult>({
     queryKey: ["timeseries-detection", fileId],
     queryFn: () =>
       apiClient
-        .post<TimeSeriesDetectionResult>(`/eda/detect-timeseries/${fileId}`)
-        .then((r) => r.data),
+        .post<BackendTimeSeriesResponse>(`/eda/detect-timeseries/${fileId}`)
+        .then(({ data: { detection = {} } }) => ({
+          detected_columns: detection.datetime_columns ?? [],
+          time_column: detection.primary_datetime_column ?? undefined,
+          frequency: detection.frequency ?? undefined,
+          is_regular: detection.is_regular,
+        })),
     enabled: !!fileId && enabled,
     staleTime: 10 * 60 * 1000,
     retry: 1,

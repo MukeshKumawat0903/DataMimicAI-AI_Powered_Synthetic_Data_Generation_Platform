@@ -35,7 +35,7 @@ import type { OutlierResult } from "@/lib/api/types";
 
 const DETECTION_METHODS = ["IQR", "ZScore", "IsolationForest", "LOF"] as const;
 type DetectionMethod = (typeof DETECTION_METHODS)[number];
-type RemediationAction = "remove" | "cap" | "transform" | "impute";
+type RemediationAction = "remove" | "cap" | "transform";
 
 export function OutlierCard() {
   const fileId = useWorkspaceStore((s) => s.fileId);
@@ -215,7 +215,6 @@ export function OutlierCard() {
                   <option value="cap">Cap (Winsorize)</option>
                   <option value="remove">Remove rows</option>
                   <option value="transform">Log transform</option>
-                  <option value="impute">Impute median</option>
                 </select>
               </div>
             ))}

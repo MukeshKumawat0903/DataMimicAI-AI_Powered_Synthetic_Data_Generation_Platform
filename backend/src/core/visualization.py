@@ -2,6 +2,7 @@
 
 import pandas as pd
 from typing import List, Optional, Dict
+from sdv.errors import VisualizationUnavailableError
 from sdv.evaluation.single_table import get_column_plot, get_column_pair_plot
 import plotly.express as px
 import plotly.graph_objects as go
@@ -61,6 +62,26 @@ class DataVisualizer:
         """
         return df.select_dtypes(include="number")
 
+    def _is_numeric(self, column: str) -> bool:
+        return pd.api.types.is_numeric_dtype(self.real_data[column])
+
+    def _column_plot(self, column: str):
+        """
+        SDV column plot. SDV only picks a plot type for numerical, datetime,
+        categorical and boolean sdtypes; for others (e.g. latitude, longitude,
+        PII types) fall back to a plot type based on the pandas dtype.
+        """
+        kwargs = dict(
+            real_data=self.real_data,
+            synthetic_data=self.synthetic_data,
+            column_name=column,
+            metadata=self.metadata
+        )
+        try:
+            return get_column_plot(**kwargs)
+        except VisualizationUnavailableError:
+            return get_column_plot(**kwargs, plot_type="distplot" if self._is_numeric(column) else "bar")
+
     def distribution_plot(
         self,
         column: str,
@@ -97,12 +118,7 @@ class DataVisualizer:
             fig.add_trace(go.Histogram(x=synth, name="Synthetic", opacity=0.6, histnorm='probability density'))
             fig.update_layout(barmode='overlay', title=f"KDE (Density): {column}")
         else:
-            fig = get_column_plot(
-                real_data=self.real_data,
-                synthetic_data=self.synthetic_data,
-                column_name=column,
-                metadata=self.metadata
-            )
+            fig = self._column_plot(column)
         return fig.to_html(full_html=False)
 
     def pair_plot(
@@ -120,12 +136,19 @@ class DataVisualizer:
         Returns:
             str: Plotly HTML string.
         """
-        fig = get_column_pair_plot(
+        kwargs = dict(
             real_data=self.real_data,
             synthetic_data=self.synthetic_data,
             column_names=columns,
             metadata=self.metadata
         )
+        try:
+            fig = get_column_pair_plot(**kwargs)
+        except VisualizationUnavailableError:
+            # Same plot-type rules SDV uses, but based on the pandas dtype
+            numeric = [self._is_numeric(c) for c in columns]
+            plot_type = "scatter" if all(numeric) else "heatmap" if not any(numeric) else "box"
+            fig = get_column_pair_plot(**kwargs, plot_type=plot_type)
         return fig.to_html(full_html=False)
 
     def real_vs_synth_summary(
@@ -174,12 +197,7 @@ class DataVisualizer:
 
         # Add distribution plots for each column
         for col in columns:
-            fig = get_column_plot(
-                real_data=self.real_data,
-                synthetic_data=self.synthetic_data,
-                column_name=col,
-                metadata=self.metadata
-            )
+            fig = self._column_plot(col)
             html += f"<h5>Distribution: {col}</h5>" + fig.to_html(full_html=False)
         return html
 
@@ -222,12 +240,7 @@ class DataVisualizer:
                 )
             else:
                 html += f"<b>{col}</b>: Not enough data for drift analysis.<br>"
-            fig = get_column_plot(
-                real_data=self.real_data,
-                synthetic_data=self.synthetic_data,
-                column_name=col,
-                metadata=self.metadata
-            )
+            fig = self._column_plot(col)
             html += fig.to_html(full_html=False)
         return html
 

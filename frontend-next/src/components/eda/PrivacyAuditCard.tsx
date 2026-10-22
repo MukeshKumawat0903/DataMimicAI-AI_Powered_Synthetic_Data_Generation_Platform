@@ -21,7 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ChevronDown, ChevronRight, Shield, ShieldAlert } from "lucide-react";
-import { RadialBarChart, RadialBar, ResponsiveContainer, Tooltip } from "recharts";
+import { RadialBarChart, RadialBar, PolarAngleAxis, ResponsiveContainer, Tooltip } from "recharts";
 
 function KAnonymityGauge({ k, threshold }: { k: number; threshold: number }) {
   const pct = Math.min(100, (k / Math.max(threshold * 2, 1)) * 100);
@@ -40,6 +40,7 @@ function KAnonymityGauge({ k, threshold }: { k: number; threshold: number }) {
             startAngle={90}
             endAngle={-270}
           >
+            <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
             <RadialBar dataKey="value" background />
             <Tooltip formatter={(v) => `${Number(v).toFixed(0)}%`} />
           </RadialBarChart>
@@ -169,16 +170,18 @@ export function PrivacyAuditCard() {
                     )}
                   </div>
 
-                  <div className="flex-shrink-0">
-                    <p className="text-sm font-medium mb-2 text-center">k-Anonymity</p>
-                    <KAnonymityGauge
-                      k={data.k_anonymity.k_value}
-                      threshold={data.k_anonymity.threshold}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1 text-center">
-                      {data.k_anonymity.at_risk_records} records at risk
-                    </p>
-                  </div>
+                  {data.k_anonymity && (
+                    <div className="flex-shrink-0">
+                      <p className="text-sm font-medium mb-2 text-center">k-Anonymity</p>
+                      <KAnonymityGauge
+                        k={data.k_anonymity.k_value}
+                        threshold={data.k_anonymity.threshold}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1 text-center">
+                        {data.k_anonymity.at_risk_records} records at risk
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

@@ -61,6 +61,20 @@ const config: Config = {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      // The shadcn components are generated for Tailwind v4, which defines
+      // variants like `data-active:` and `data-horizontal:` in CSS. Map them
+      // to the data attributes Base UI renders so they also work on v3
+      // (this covers the matching group-data-* variants too).
+      data: {
+        active: "active",
+        open: "open",
+        closed: "closed",
+        checked: "checked",
+        disabled: "disabled",
+        placeholder: "placeholder",
+        horizontal: 'orientation="horizontal"',
+        vertical: 'orientation="vertical"',
+      },
     },
   },
   plugins: [],

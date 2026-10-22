@@ -138,7 +138,7 @@ export interface RemediateRequest {
   file_id: string;
   remediations: Array<{
     column: string;
-    action: "remove" | "cap" | "transform" | "impute";
+    action: "remove" | "cap" | "transform";
   }>;
 }
 
@@ -160,7 +160,7 @@ export interface KAnonymityResult {
 
 export interface PrivacyResponse {
   pii_results: PIIResult[];
-  k_anonymity: KAnonymityResult;
+  k_anonymity?: KAnonymityResult;
   scan_mode: "fast" | "deep";
 }
 

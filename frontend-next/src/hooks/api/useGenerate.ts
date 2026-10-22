@@ -25,20 +25,9 @@ export function useGenerate() {
           },
         }
       );
-      // Build synthetic file ID from the Content-Disposition header or derive it
-      const contentDisposition = response.headers["content-disposition"] as string | undefined;
-      let synFileId: string | null = null;
-      if (contentDisposition) {
-        const match = contentDisposition.match(/filename[^;=\n]*=([^;\n]*)/);
-        if (match) {
-          // e.g. syn_<uuid>.csv → strip syn_ and .csv
-          const fname = match[1].replace(/['"]/g, "").trim();
-          synFileId = fname.replace(/^syn_/, "").replace(/\.csv$/, "");
-        }
-      }
-      if (!synFileId) {
-        synFileId = `local_${Date.now()}`;
-      }
+      // Backend saves the synthetic data as syn_<file_id>.csv, so the source
+      // file_id is what /eda/download and /metrics need later.
+      const synFileId = req.file_id;
       // Trigger file download in browser
       const url = URL.createObjectURL(response.data as Blob);
       const a = document.createElement("a");
