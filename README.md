@@ -1,10 +1,10 @@
 # DataMimicAI 🚀
 
-**The Next-Gen Synthetic Data Platform for AI, Analytics, and Data Science**
+**A Synthetic Data Platform for AI, Analytics, and Data Science**
 
-> _Create, analyze, explain, and validate synthetic data with cutting-edge generative models, an AI assistant that proposes (never executes) fixes, and a guided four-step workflow._
+> _Explore, generate, explain, and validate synthetic tabular and time-series data with SDV and SynthCity models, built-in privacy audits, and an AI assistant whose plans always need human approval. A guided four-step workflow takes you from upload to validation._
 
-![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688?logo=fastapi&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-14-000000?logo=nextdotjs&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-legacy%20UI-FF4B4B?logo=streamlit&logoColor=white)
@@ -15,18 +15,16 @@
 
 ## 🌟 Overview
 
-**DataMimicAI** is a no-code platform for **privacy-preserving, high-fidelity synthetic data generation** across **tabular and time-series datasets**.
+**DataMimicAI** is a no-code platform for **synthetic data generation** from **tabular and time-series CSV files**.
 
 It's built for **data scientists, ML engineers, and analytics teams**, and lets them:
 
-- Turn raw CSVs into **synthetic datasets** in a few clicks
-- Profile, clean, and engineer features before generation
-- Audit datasets for **PII, k-anonymity, and re-identification risk**
-- Get **LLM-powered explanations** of diagnostics and AI-proposed transformation plans, gated by human approval
-- Validate synthetic data quality and iterate until it's fit for purpose
-
-> 🔍 **Primary Focus:**
-> Seamless, trustworthy, explainable synthetic data, **powered by SDV, SynthCity, and a human-in-the-loop AI assistant.**
+- Upload a CSV (or pick a demo dataset) and generate a synthetic version in a few clicks
+- Profile, clean, and transform the data before generation, and export the transformations as Python code
+- Audit the data for **PII, quasi-identifiers, and k-anonymity**
+- Get **LLM explanations** of data diagnostics, plus transformation plans that a human must approve
+- Compare 11 generators (SDV and SynthCity, including differentially private models)
+- Check the synthetic data against the original with statistical tests, privacy checks, and side-by-side charts, then refine and regenerate
 
 ---
 
@@ -34,12 +32,10 @@ It's built for **data scientists, ML engineers, and analytics teams**, and lets 
 
 | Benefit | What it enables |
 | --- | --- |
-| 🔐 **Privacy-first** | Share realistic datasets with no PII leakage; support GDPR/HIPAA-friendly dev and test workflows |
-| 🧠 **Smarter, fairer ML** | Upsample rare events, fill gaps in under-represented groups, stress-test models with edge cases and drift |
-| 📊 **Safe testing** | Populate dev/QA/sandbox environments and cross-team migrations without exposing real data |
-| ⚡ **Faster iteration** | Generate data for prototypes, hackathons, and demos without waiting for data approvals |
-
-**Industry use cases:** 🏥 Healthcare · 💰 Finance (fraud, credit, risk) · 🏭 Manufacturing/IoT (rare faults, predictive maintenance) · 🚗 Autonomous systems · 💼 HR & Marketing
+| 🔐 **Privacy** | Work with realistic data that is generated, not copied, from the real records |
+| 🧠 **More training data** | Add rows for small datasets or rare cases |
+| 📊 **Safe testing** | Fill dev, QA, and demo environments without using production data |
+| ⚡ **Faster iteration** | Prototype and share data without waiting for data-access approvals |
 
 ---
 
@@ -63,8 +59,8 @@ It's built for **data scientists, ML engineers, and analytics teams**, and lets 
 
 ```
 ┌──────────────────────────┐      ┌──────────────────────────┐
-│  Next.js frontend (new)  │      │  Streamlit frontend      │
-│  frontend-next/  :3000   │      │  frontend/  :8501        │
+│  Next.js frontend (main) │      │  Streamlit frontend      │
+│  frontend-next/  :3000   │      │  (legacy) frontend/ :8501│
 └────────────┬─────────────┘      └────────────┬─────────────┘
              │          REST (JSON / CSV)       │
              └───────────────┬──────────────────┘
@@ -73,18 +69,18 @@ It's built for **data scientists, ML engineers, and analytics teams**, and lets 
               │  FastAPI backend  :8000      │
               │  backend/src/api             │
               ├──────────────────────────────┤
-              │  core/eda        profiling, outliers, drift, PII, time-series
-              │  core/feature_engineering   utility & privacy suggestions
-              │  core/synth      SDV + SynthCity generators, model selection
-              │  core/ai_assistance         LLM explain, RAG, agents, approval gate
+              │  core/eda        profiling, correlation, outliers, drift, PII, privacy, time-series
+              │  core/feature_engineering   utility & privacy suggestions, conflict resolution
+              │  core/synth      SDV + SynthCity generators, AutoML model comparison
+              │  core/ai_assistance         diagnostics, LLM explanations, planner, approval gate
               │  core/execution  deterministic transformation engine
-              │  core/validation quality scoring & feedback loop
+              │  core/validation before/after validation & decision reports
               └──────────────┬───────────────┘
                              ▼
-           PostgreSQL (optional) · uploads/ · Groq LLM API
+              local uploads/ folder · Groq LLM API
 ```
 
-**Two frontends, one backend.** The project is migrating from Streamlit to a **Next.js 14 + TypeScript** frontend. Both UIs talk to the same FastAPI backend. Streamlit is still the most feature-complete UI (it includes Agent Mode); the Next.js app covers the core Upload → Explore → Generate → Validate workflow.
+**Two frontends, one backend.** The **Next.js 14 + TypeScript** app is the main UI and covers the full workflow, including AI Assistance (Agent Mode). The earlier **Streamlit** UI is still included and talks to the same FastAPI backend; it is what the Docker and Render setups run.
 
 ---
 
@@ -94,37 +90,39 @@ It's built for **data scientists, ML engineers, and analytics teams**, and lets 
 
 **Upload → Explore → Generate → Validate**
 
-- Steps unlock progressively: Explore/Generate need a loaded dataset, and Validate needs a generated one
-- Next.js: wizard step indicator, sidebar navigation, **Ctrl+1–4** keyboard shortcuts, and a guard that warns before you leave mid-task
-- Workspace state persists across steps (Zustand in Next.js, session state in Streamlit)
+- Steps unlock as you go: Explore and Generate need a loaded dataset, and Validate needs a generated one
+- Wizard step indicator, sidebar navigation, **Ctrl+1–4** keyboard shortcuts, and a guard that warns before you leave a page mid-task
+- Workspace state is saved in the browser, so a page refresh keeps your progress
+- Onboarding tour for first-time users, and light/dark themes
 
 ### 📁 Step 1: Upload & Smart Preview
 
-- Drag-and-drop CSV upload, or **Demo Mode** with built-in SDV sample datasets
-- Auto-inferred schema: types, missing values, and basic stats
-- KPI banner and an interactive data table for a quick readiness check
+- Drag-and-drop CSV upload (header row required; 10 MB default limit in the browser), or **Demo Mode** with built-in SDV sample datasets
+- Auto-detected column types, missing values, and basic statistics
+- A data-health overview (missing values, duplicate rows, constant columns), a KPI banner, and a sortable data table
 
 ### 🔍 Step 2: Explore & Configure (EDA & Feature Engineering)
 
-| Module | Highlights |
+| Module | What it does |
 | --- | --- |
-| 📄 **Data Profiling** | Structure, distributions, distribution fitting, quality flags, missing-value fixes |
-| 💡 **Feature Suggestions** | Utility- and privacy-aware suggestions, conflict resolution, transform configs you can save, roll back, and export as code |
-| 📊 **Correlation** | Pairwise correlation, mutual-information matrix, functional-dependency detection |
-| ⚠️ **Outliers & Drift** | IQR / Isolation Forest / LOF / Cook's distance, time-series outliers, winsorize/cap/remove remediation with history, drift analysis |
-| 🔒 **Privacy Audit** | Fast and deep PII scans (Presidio), quasi-identifier suggestions, k-anonymity scoring |
-| ⏰ **Time-Series Analysis** | Auto-detection, ACF/PACF, seasonal decomposition |
+| 📄 **Data Profiling** | Column types, missing values, unique counts, constant, duplicate and mostly-missing columns, and distribution fitting (best-fit distribution, skewness, kurtosis). One-click fixes: fill missing values, group rare categories, drop outlier rows, drop columns |
+| 📊 **Correlation** | Pearson correlation heatmap, top correlated pairs, mutual-information matrix, and functional-dependency detection |
+| ⚠️ **Outliers** | IQR, Z-score, MAD, Isolation Forest, and LOF detection; Cook's distance; remediation by capping, winsorizing, removing rows, binning, or log transform |
+| 🔒 **Privacy Audit** | Fast and deep PII scans (Microsoft Presidio), quasi-identifier suggestions, and k-anonymity scoring |
+| 💡 **Feature Suggestions** | Utility suggestions (log, square root, power, scaling) and privacy suggestions (redact, hash, mask, generalize, bin, suppress), with conflict resolution when both apply to the same column. Preview the impact, save and load configurations, export the code, and apply the accepted transforms at generation time |
+| ⏰ **Time Series** | Auto-detection of date and value columns, ACF/PACF, seasonal decomposition, and time-series outliers |
+| 🗂️ **Current Dataset** | The working data with recently changed columns highlighted, and **Reset to original** to undo all changes |
 
 ### 🤖 AI Assistance (LLM Explain + Agent Mode)
 
-A **read-only intelligence layer**: AI proposes, humans approve, and a deterministic engine executes.
+Available in both the Next.js and Streamlit UIs. **AI proposes, a human approves, and a deterministic engine executes.**
 
-- **🔍 Diagnostics:** Builds structured diagnostics from EDA signals and explains them in plain language using **Groq-hosted LLaMA 3.3 70B**, grounded by a **RAG knowledge base** (EDA, transformation, generator, and privacy rules in YAML)
-- **🤖 Action Planner:** A transformation-planner agent drafts a step-by-step remediation plan with a rationale for each step
-- **✅ Approval Gate:** Every plan is reviewed and explicitly approved or rejected by a human; nothing runs automatically
-- **⚙️ Deterministic Execution:** Approved plans run through a non-AI execution engine with status tracking
+- **🔍 AI Diagnostics:** Builds structured diagnostics from EDA signals and explains them in plain language with **Groq-hosted LLaMA 3.3 70B**. You choose the focus (for example, a dataset overview or selected columns) and the tone. Explanations are grounded with rules from a YAML knowledge base (EDA, transformation, generator, and privacy rules)
+- **Guardrails:** a baseline guard, signal selection, and an output validator that compares the numbers in the LLM's answer with the computed facts
+- **🤖 Action Planner:** A rule-based planner maps the detected issue patterns to transformation plans, each with its rationale, assumptions, and risks
+- **✅ Approval Gate:** Every plan is explicitly approved or rejected by a human; nothing runs automatically
+- **⚙️ Deterministic Execution:** Approved plans run through a non-AI engine on a copy of the data, with status tracking and a before/after validation. The dataset used for generation is not modified
 - **📄 Decision Report:** An auditable record of what was proposed, approved, executed, and why
-- Guardrails: baseline guard, signal selection, and output validation keep LLM responses grounded and well-formed
 
 > More detail: [backend/src/core/ai_assistance/docs/AI_Assistance_Module_README.md](backend/src/core/ai_assistance/docs/AI_Assistance_Module_README.md)
 
@@ -132,15 +130,22 @@ A **read-only intelligence layer**: AI proposes, humans approve, and a determini
 
 - **Standard (SDV):** CTGAN, TVAE, GaussianCopula, PAR (sequential/time-series)
 - **Advanced (SynthCity):** TabDDPM (diffusion), CTGAN, TVAE, PrivBayes, DP-GAN, PATE-GAN, ARF
-- **AutoML model selection:** Benchmarks candidate models and picks the best fit for your dataset
-- **Presets:** Quick (200 rows / 100 epochs), Balanced (1,000 / 300), High Fidelity (10,000 / 500), plus saved custom presets
-- Per-algorithm guidance on when to use each model
+- **AutoML comparison:** trains several SynthCity models on your data and compares them on four statistical distances (KS, Jensen–Shannon, Wasserstein, MMD)
+- **Presets:** Quick (200 rows / 100 epochs), Balanced (1,000 / 300), High Fidelity (10,000 / 500), plus your own saved presets
+- Parameters for rows and epochs, and sequence count and length for PAR
+- An algorithm comparison table with guidance on when to use each model
+- A memory check before SynthCity training, so a large job fails with a clear message instead of crashing the server
+- Download the result as **CSV, JSON, or Parquet**
 
 ### ✅ Step 4: Validate & Refine
 
-- **Quality Report:** Fidelity scoring and original-vs-synthetic distribution comparisons
-- **Visualizations:** Side-by-side charts for distributions and drift
-- **Iterate:** Version timeline of generated datasets, refinement recommendations, and a feedback loop that feeds back into generation
+- **Quality Report:** fidelity, privacy, and utility gauges computed from per-column statistical tests (KS for numeric columns, chi-square for categorical columns) and two SDMetrics privacy checks (distance to the closest real record compared with a random baseline, and the share of synthetic rows that are not copies of real rows). The scores measure distribution similarity, not downstream model performance
+- Real vs. synthetic summary metrics, per-column results, and a list of flagged issues
+- **Recommendations** that regenerate in one click: train longer or less, switch generator, or generate more rows
+- Download the quality report (Markdown) and the per-column metrics (CSV)
+- **Visualizations:** distributions, pair plots, real vs. synthetic overlays, drift, and correlation charts
+- **Iterative refinement:** regenerate with a new row count from the Validate page
+- **Generation history:** every generation is saved as a version that you can compare, restore, or download. Export or import the whole session as a JSON file
 
 ---
 
@@ -148,12 +153,12 @@ A **read-only intelligence layer**: AI proposes, humans approve, and a determini
 
 | Layer | Technologies |
 | --- | --- |
-| **Backend** | FastAPI, Uvicorn, Pandas, NumPy, SciPy, scikit-learn, statsmodels, distfit, ennemi |
-| **Synthesis** | SDV 1.17, SynthCity 0.2.12, Opacus (differential privacy) |
+| **Backend** | FastAPI, Uvicorn, Pandas, NumPy, SciPy, scikit-learn, statsmodels, distfit, ennemi, Plotly |
+| **Synthesis** | SDV 1.17, SynthCity 0.2.12, Opacus (differential privacy), SDMetrics |
 | **Privacy** | Microsoft Presidio, k-anonymity, quasi-identifier detection |
-| **AI / LLM** | LangChain + Groq (LLaMA 3.3 70B), YAML RAG knowledge base |
-| **Storage** | PostgreSQL via SQLAlchemy + asyncpg (optional), local `uploads/` |
-| **Frontend (new)** | Next.js 14, React 18, TypeScript, Tailwind CSS, shadcn/ui, TanStack Query & Table, Zustand, React Hook Form + Zod, Recharts |
+| **AI / LLM** | LangChain + Groq (LLaMA 3.3 70B), YAML rule knowledge base |
+| **Storage** | Local `uploads/` folder (CSV files and versioned synthetic outputs) |
+| **Frontend (main)** | Next.js 14, React 18, TypeScript, Tailwind CSS, shadcn/ui, TanStack Query & Table, Zustand, React Hook Form + Zod, Recharts |
 | **Frontend (legacy)** | Streamlit, Plotly |
 | **DevOps** | Docker, docker-compose, Render (`render.yaml`) |
 
@@ -163,10 +168,9 @@ A **read-only intelligence layer**: AI proposes, humans approve, and a determini
 
 ### Prerequisites
 
-- **Python 3.9+** (3.11 recommended for local development)
+- **Python 3.11** (the version used by the Docker image)
 - **Node.js 18+** and npm (for the Next.js frontend)
 - A **Groq API key**, required only for the AI Assistance features ([get one here](https://console.groq.com/))
-- PostgreSQL, optional; the app runs without it and logs a warning
 
 ### 1. Clone and configure
 
@@ -176,11 +180,10 @@ cd DataMimicAI-AI_Powered_Synthetic_Data_Generation_Platform
 cp .env.example .env        # Windows PowerShell: Copy-Item .env.example .env
 ```
 
-Add your LLM key (and optionally a database URL) to `.env`:
+Add your LLM key to `.env`:
 
 ```env
 GROQ_API_KEY=your_groq_api_key
-DATABASE_URL=postgresql://user:password@host:5432/dbname
 ```
 
 ### 2. Start the backend
@@ -207,7 +210,7 @@ Open **http://localhost:3000**. The frontend uses `NEXT_PUBLIC_API_URL` (default
 
 > 🪟 **Windows one-click:** `run_frontend_next.bat` starts the backend and the Next.js frontend in separate windows. It finds `backend\.venv` automatically and runs `npm install` on first launch.
 
-### 3b. Or start the Streamlit frontend (legacy, includes Agent Mode)
+### 3b. Or start the Streamlit frontend (legacy)
 
 ```bash
 cd frontend
@@ -247,13 +250,15 @@ See [README_DOCKER.md](README_DOCKER.md) for the full guide.
 
 | Variable | Used by | Purpose |
 | --- | --- | --- |
-| `GROQ_API_KEY` | Backend | Enables LLM explanations and the Action Planner |
-| `DATABASE_URL` | Backend | PostgreSQL connection string (optional) |
+| `GROQ_API_KEY` | Backend | Enables LLM explanations in AI Assistance |
 | `UPLOAD_DIR` | Backend | Where uploaded and generated files are stored |
 | `LOG_LEVEL` | Backend | Logging verbosity (default `INFO`) |
+| `BACKEND_LOG_FILE` | Backend | Optional path for a rotating log file |
 | `CORS_ORIGINS` | Backend | Extra browser origins allowed to call the API, comma-separated (any `localhost` port is always allowed) |
+| `SYNTHCITY_MIN_FREE_MEMORY_GB` | Backend | Free memory required before SynthCity training starts (default `2`) |
 | `BACKEND_PORT` / `UVICORN_WORKERS` | Docker | Backend port and worker count |
 | `NEXT_PUBLIC_API_URL` | Next.js | Backend base URL (default `http://localhost:8000`) |
+| `NEXT_PUBLIC_MAX_UPLOAD_SIZE` | Next.js | Upload size limit in bytes, checked in the browser (default 10 MB) |
 | `BACKEND_URL` / `API_URL` | Streamlit | Backend base URL |
 | `STREAMLIT_SERVER_PORT` | Streamlit | Streamlit port (default `8501`) |
 
@@ -265,12 +270,12 @@ The full interactive reference is at `/docs` (Swagger UI). Main route groups:
 
 | Prefix | Purpose |
 | --- | --- |
-| `/upload`, `/load-demo`, `/generate`, `/evaluate_models`, `/visualize`, `/metrics`, `/health` | Core data and generation |
-| `/eda/*` | Profiling, correlation, outliers, drift, feature suggestions, transforms, PII, k-anonymity, time-series |
-| `/feedback-generation/*` | Feedback-driven regeneration and download |
+| `/upload`, `/load-demo`, `/generate`, `/evaluate_models`, `/visualize`, `/metrics`, `/health` | Core data, generation, model comparison, and validation |
+| `/eda/*` | Profiling, correlation, outliers, drift, feature suggestions, transforms, PII, k-anonymity, time-series, downloads |
+| `/feedback-generation/*` | Generation with accepted transforms, download, and version restore |
 | `/llm/*` | LLM explanations and explanation scopes |
 | `/api/diagnostics/*` | Build and interpret diagnostics |
-| `/api/planner/*` | AI transformation planning |
+| `/api/planner/*` | Transformation planning |
 | `/api/approval/*` | Human review gate for plans |
 | `/api/execution/*` | Deterministic plan execution and status |
 | `/api/validation/*` | Decision reports and plan history |
@@ -287,17 +292,18 @@ The full interactive reference is at `/docs` (Swagger UI). Main route groups:
 │   └── src/core/
 │       ├── eda/                 # Profiling, correlation, outliers, drift, PII, privacy, time-series
 │       ├── feature_engineering/ # Utility/privacy suggesters, conflict resolver
-│       ├── synth/               # SDV & SynthCity generators, AutoML model selection
-│       ├── ai_assistance/       # LLM explainability engine, RAG, agents, approval gate
+│       ├── synth/               # SDV & SynthCity generators, AutoML model comparison
+│       ├── ai_assistance/       # Diagnostics, LLM explainability engine, YAML knowledge base,
+│       │                        # planner agent, approval gate
 │       ├── execution/           # Deterministic execution engine
-│       └── validation/          # Validation feedback loop & storage
-├── frontend-next/               # Next.js 14 + TypeScript frontend (new)
+│       └── validation/          # Before/after validation & decision reports
+├── frontend-next/               # Next.js 14 + TypeScript frontend (main)
 │   └── src/
 │       ├── app/                 # Routes: /upload, /explore, /generate, /validate
-│       ├── components/          # data, eda, generation, validation, wizard, layout, ui (shadcn)
+│       ├── components/          # data, eda, ai, generation, validation, charts, wizard, layout, ui (shadcn)
 │       ├── hooks/               # TanStack Query API hooks, shortcuts, navigation guard
 │       └── lib/                 # API client, types, constants, Zustand workspace store
-├── frontend/                    # Streamlit frontend (legacy, includes Agent Mode)
+├── frontend/                    # Streamlit frontend (legacy)
 │   ├── app.py
 │   ├── helpers/                 # Upload, EDA, generation, validation, visualization modules
 │   └── ui/                      # Action Planner & Decision Report UIs
@@ -306,16 +312,6 @@ The full interactive reference is at `/docs` (Swagger UI). Main route groups:
 ├── run_frontend_next.bat        # Windows launcher: backend + Next.js
 └── start.sh                     # Bash launcher: backend + Streamlit
 ```
-
----
-
-## 🗺️ Roadmap
-
-- **🖥️ Next.js migration:** Bring Agent Mode (Diagnostics, Action Planner, Decision Report) to the new frontend and add it to Docker
-- **✍️ LLM-driven generator:** Prompt/schema-to-data generation
-- **🔒 Privacy & Risk Audit tab:** Automated re-identification risk scoring in AI Assistance
-- **🏭 Industry templates:** Healthcare, Finance, Retail, and Education data simulation
-- **📊 Advanced visualization hub** and SDMetrics-based evaluation reports
 
 ---
 
