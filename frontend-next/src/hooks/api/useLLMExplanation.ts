@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
-import type { LLMExplanationResponse } from "@/lib/api/types";
+import type { LLMExplanationOptions, LLMExplanationResponse, LLMScopes } from "@/lib/api/types";
 
 // Backend response shape from POST /llm/explain
 interface BackendExplanationResponse {
@@ -18,48 +18,42 @@ interface BackendExplanationResponse {
 function mapResponse(res: BackendExplanationResponse): LLMExplanationResponse {
   const report = res.validation_report ?? {};
   const checks = [
-    report.length_valid ?? false,
-    report.no_hallucination ?? false,
-    report.scope_aligned ?? false,
+    { label: "Length within limits", passed: report.length_valid ?? false },
+    { label: "No unsupported facts", passed: report.no_hallucination ?? false },
+    { label: "Matches the chosen scope", passed: report.scope_aligned ?? false },
   ];
-  const passedCount = checks.filter(Boolean).length;
-  // If fully validated use 100, otherwise score by what passed
-  const validation_pct = res.validated ? 100 : Math.round((passedCount / 3) * 100);
-
-  const STEP_LABELS = [
-    "Loading dataset",
-    "Detecting issues",
-    "Gathering context",
-    "Querying LLM",
-    "Parsing response",
-    "Validating facts",
-    "Preparing output",
-  ];
-
+  const passed = checks.filter((c) => c.passed).length;
   return {
     explanation: res.explanation,
-    validation_pct,
-    steps: STEP_LABELS.map((label, i) => ({
-      step: i + 1,
-      label,
-      status: "done" as const,
-    })),
+    validated: res.validated,
+    validation_pct: res.validated ? 100 : Math.round((passed / checks.length) * 100),
+    checks,
+    source: res.metadata?.explanation_source === "facts_summary" ? "facts_summary" : "llm",
   };
 }
 
-export function useLLMExplanation(fileId: string | null, enabled = false) {
+export function useLLMScopes() {
+  return useQuery<LLMScopes>({
+    queryKey: ["llm-scopes"],
+    queryFn: () => apiClient.get<LLMScopes>(`/llm/scopes`).then((r) => r.data),
+    staleTime: Infinity,
+  });
+}
+
+export function useLLMExplanation(fileId: string | null, options: LLMExplanationOptions, enabled = false) {
   return useQuery<LLMExplanationResponse>({
-    queryKey: ["llm-explanation", fileId],
+    queryKey: ["llm-explanation", fileId, options],
     queryFn: () =>
       apiClient
         .post<BackendExplanationResponse>(`/llm/explain`, {
           file_id: fileId,
-          scope: "dataset_overview",
-          tone: "clear",
+          scope: options.scope,
+          tone: options.tone,
+          ...(options.columns?.length ? { columns: options.columns } : {}),
         })
         .then((r) => mapResponse(r.data)),
     enabled: !!fileId && enabled,
-    staleTime: 0,
+    staleTime: 5 * 60 * 1000,
     retry: 1,
   });
 }

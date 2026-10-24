@@ -61,12 +61,15 @@ interface DataTableProps {
   columnInfo?: ColumnInfo[];
   /** Default page size */
   pageSize?: number;
+  /** Columns to tint, e.g. the ones the last cleaning action changed */
+  highlightColumns?: string[];
 }
 
 export function DataTable({
   data,
   columnInfo = [],
   pageSize = 20,
+  highlightColumns = [],
 }: DataTableProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -111,7 +114,7 @@ export function DataTable({
             {typeMap[key] && (
               <span
                 className={cn(
-                  "ml-2 rounded px-1 py-0.5 text-[10px] font-semibold",
+                  "ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
                   TYPE_VARIANT[typeMap[key]] ?? TYPE_VARIANT.unknown
                 )}
               >
@@ -174,13 +177,16 @@ export function DataTable({
       </div>
 
       {/* Table */}
-      <div className="rounded-md border overflow-x-auto">
+      <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((hg) => (
               <TableRow key={hg.id} className="bg-muted/50">
                 {hg.headers.map((header) => (
-                  <TableHead key={header.id} className="whitespace-nowrap">
+                  <TableHead
+                    key={header.id}
+                    className={cn("whitespace-nowrap", highlightColumns.includes(header.id) && "bg-amber-100")}
+                  >
                     {header.isPlaceholder
                       ? null
                       : flexRender(
@@ -207,7 +213,10 @@ export function DataTable({
               table.getRowModel().rows.map((row) => (
                 <TableRow key={row.id} className="hover:bg-muted/30">
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="py-1.5">
+                    <TableCell
+                      key={cell.id}
+                      className={cn("py-1.5", highlightColumns.includes(cell.column.id) && "bg-amber-50")}
+                    >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}

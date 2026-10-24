@@ -57,7 +57,7 @@ def load_df_by_file_id(file_id: str) -> pd.DataFrame:
 
 
 @router.post("/execute-plan")
-async def execute_plan(
+def execute_plan(
     plan_id: str = Body(
         ...,
         description="Plan identifier to execute",

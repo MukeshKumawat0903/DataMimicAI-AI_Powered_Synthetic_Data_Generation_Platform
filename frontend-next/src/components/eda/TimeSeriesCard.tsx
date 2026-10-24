@@ -14,13 +14,48 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { ChevronDown, ChevronRight, TrendingUp } from "lucide-react";
+import { IconTile } from "@/components/ui/icon-tile";
+import { TimeSeriesAnalysis } from "./TimeSeriesAnalysis";
 
 interface TimeSeriesDetectionResult {
   detected_columns?: string[];
   time_column?: string;
   frequency?: string;
   is_regular?: boolean;
+  /** Numeric columns worth analysing over time */
+  targets?: string[];
+  /** Distinct timestamps, and how many rows share each one (> 1 when the file holds several series) */
+  periods?: number;
+  rows_per_timestamp?: number;
   metadata?: Record<string, unknown>;
+}
+
+const FREQUENCY_LABELS: Record<string, string> = {
+  D: "Daily",
+  B: "Business days",
+  W: "Weekly",
+  M: "Monthly",
+  MS: "Monthly",
+  ME: "Monthly",
+  Q: "Quarterly",
+  QS: "Quarterly",
+  Y: "Yearly",
+  A: "Yearly",
+  H: "Hourly",
+  h: "Hourly",
+  T: "Every minute",
+  min: "Every minute",
+  S: "Every second",
+  s: "Every second",
+};
+
+/** pandas frequency alias ("W-SUN", "QS-OCT", "15T") → readable label */
+function frequencyLabel(freq: string) {
+  const base = freq.split("-")[0];
+  const step = base.match(/^\d+/)?.[0];
+  const label = FREQUENCY_LABELS[base.replace(/^\d+/, "")];
+  if (!label) return freq;
+  return step && step !== "1" ? `${label} ×${step}` : label;
 }
 
 // Backend response shape from POST /eda/detect-timeseries/{file_id}
@@ -30,6 +65,9 @@ interface BackendTimeSeriesResponse {
     primary_datetime_column?: string | null;
     frequency?: string | null;
     is_regular?: boolean;
+    potential_targets?: string[];
+    periods?: number;
+    rows_per_timestamp?: number;
   };
 }
 
@@ -44,6 +82,9 @@ function useTimeSeriesDetection(fileId: string | null, enabled: boolean) {
           time_column: detection.primary_datetime_column ?? undefined,
           frequency: detection.frequency ?? undefined,
           is_regular: detection.is_regular,
+          targets: detection.potential_targets ?? [],
+          periods: detection.periods,
+          rows_per_timestamp: detection.rows_per_timestamp,
         })),
     enabled: !!fileId && enabled,
     staleTime: 10 * 60 * 1000,
@@ -73,16 +114,19 @@ export function TimeSeriesCard() {
     <Collapsible open={open} onOpenChange={setOpen}>
       <Card>
         <CardHeader className="flex flex-row items-center justify-between py-3">
-          <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium">
+          <CollapsibleTrigger className="flex items-center gap-3 text-sm font-medium">
             {open ? (
               <ChevronDown className="h-4 w-4" />
             ) : (
               <ChevronRight className="h-4 w-4" />
             )}
-            <TrendingUp className="h-4 w-4 text-blue-500" />
-            <CardTitle className="text-base">Time Series Detection</CardTitle>
+            <IconTile icon={TrendingUp} tone="cyan" />
+            <span className="text-left">
+              <CardTitle className="text-base">Time Series Detection</CardTitle>
+              <span className="block text-xs font-normal text-muted-foreground">Date columns, autocorrelation, decomposition and outliers</span>
+            </span>
           </CollapsibleTrigger>
-          <Button size="sm" variant="outline" onClick={handleRun}>
+          <Button size="sm" variant={triggered ? "outline" : "default"} onClick={handleRun}>
             {triggered ? "Refresh" : "Detect"}
           </Button>
         </CardHeader>
@@ -125,7 +169,13 @@ export function TimeSeriesCard() {
                         {data.frequency && (
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">Frequency</span>
-                            <span className="font-medium">{data.frequency}</span>
+                            <span className="font-medium">{frequencyLabel(data.frequency)}</span>
+                          </div>
+                        )}
+                        {data.periods !== undefined && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Timestamps</span>
+                            <span className="font-medium">{data.periods.toLocaleString()}</span>
                           </div>
                         )}
                         {data.is_regular !== undefined && (
@@ -140,6 +190,15 @@ export function TimeSeriesCard() {
                           </div>
                         )}
                       </div>
+                    )}
+                    {(data.rows_per_timestamp ?? 1) > 1 && (
+                      <p className="text-xs text-muted-foreground">
+                        Each timestamp has about {Math.round(data.rows_per_timestamp ?? 1)} rows (several series in
+                        one file), so the analyses below use the average per timestamp.
+                      </p>
+                    )}
+                    {fileId && (
+                      <TimeSeriesAnalysis fileId={fileId} datetimeColumns={detectedCols} targets={data.targets ?? []} />
                     )}
                   </>
                 )}

@@ -150,22 +150,26 @@ class TimeSeriesDetector:
             
             # Sort to get proper start/end
             dt_sorted = dt_series.sort_values()
-            
+            # Several series (e.g. one per stock symbol) repeat each timestamp; measure the
+            # spacing on the distinct timestamps
+            dt_unique = pd.Series(dt_sorted.unique())
+
             result['start_date'] = dt_sorted.iloc[0].isoformat()
             result['end_date'] = dt_sorted.iloc[-1].isoformat()
-            result['periods'] = len(dt_sorted)
-            
+            result['periods'] = len(dt_unique)
+            result['rows_per_timestamp'] = round(len(dt_sorted) / len(dt_unique), 1)
+
             # Step 4: Infer frequency
             try:
                 # infer_freq expects a DatetimeIndex; ensure we pass a DatetimeIndex
-                freq = pd.infer_freq(pd.DatetimeIndex(dt_sorted))
+                freq = pd.infer_freq(pd.DatetimeIndex(dt_unique)) if len(dt_unique) >= 3 else None
                 if freq:
                     result['frequency'] = freq
                     result['is_regular'] = True
                     result['detection_confidence'] = 'high'
-                else:
+                elif len(dt_unique) >= 2:
                     # Try to detect common patterns manually
-                    diffs = dt_sorted.diff().dropna()
+                    diffs = dt_unique.diff().dropna()
                     mode_diff = diffs.mode()
                     if len(mode_diff) > 0:
                         common_diff = mode_diff.iloc[0]
@@ -174,6 +178,11 @@ class TimeSeriesDetector:
                         if matching / len(diffs) > 0.8:
                             result['is_regular'] = True
                             result['frequency'] = self._describe_timedelta(common_diff)
+                            result['detection_confidence'] = 'medium'
+                        elif common_diff == pd.Timedelta(days=1) and (dt_unique.dt.dayofweek < 5).all():
+                            # Weekdays only, with weekend and holiday gaps (e.g. trading days)
+                            result['is_regular'] = True
+                            result['frequency'] = 'B'
                             result['detection_confidence'] = 'medium'
             except Exception as e:
                 logger.warning(f"Frequency inference failed: {e}")
@@ -277,6 +286,9 @@ class TimeSeriesAnalyzer:
             )
         
         series = self.df[target_col].dropna()
+        if series.index.has_duplicates:
+            # Several series share each timestamp; interleaving them would hide any autocorrelation
+            series = series.groupby(level=0).mean()
         n_obs = len(series)
 
         # Validate minimum observations
@@ -355,33 +367,51 @@ class TimeSeriesAnalyzer:
         except Exception:
             conf_threshold = 1.96 / np.sqrt(max(1, len(acf_vals)))
 
-        # PACF cutoff suggests AR order: find last lag where PACF is significant
-        pacf_significant = np.abs(pacf_vals[1:]) > conf_threshold
-        if pacf_significant.any():
-            sig_idx = np.where(pacf_significant)[0]
-            # last significant lag index -> add 1 to convert from zero-based (lag1->index0)
-            suggestions['ar_order'] = int(sig_idx[-1] + 1)
+        def cutoff_lag(vals: np.ndarray) -> Optional[int]:
+            """Last significant lag before the values drop inside the band and stay there
+            (cuts off), or None when they stay significant for many lags (tails off)."""
+            significant = np.abs(vals[1:]) > conf_threshold
+            if not significant.any():
+                return 0
+            if significant.all():
+                return None
+            first_inside = int(np.argmin(significant))  # index of the first insignificant lag
+            # Allow the odd stray spike later on (~1 in 20 lags is significant by chance)
+            return first_inside if significant[first_inside:].mean() <= 0.1 else None
 
-        # ACF cutoff suggests MA order: find last lag where ACF is significant
-        acf_significant = np.abs(acf_vals[1:]) > conf_threshold
-        if acf_significant.any():
-            sig_idx = np.where(acf_significant)[0]
-            suggestions['ma_order'] = int(sig_idx[-1] + 1)
-        
-        # Determine model type
-        if suggestions['ar_order'] and not suggestions['ma_order']:
-            suggestions['model_type'] = f"AR({suggestions['ar_order']})"
-            suggestions['explanation'] = f"PACF cuts off at lag {suggestions['ar_order']}, ACF tails off → AR model suggested"
-        elif suggestions['ma_order'] and not suggestions['ar_order']:
-            suggestions['model_type'] = f"MA({suggestions['ma_order']})"
-            suggestions['explanation'] = f"ACF cuts off at lag {suggestions['ma_order']}, PACF tails off → MA model suggested"
-        elif suggestions['ar_order'] and suggestions['ma_order']:
-            suggestions['model_type'] = f"ARMA({suggestions['ar_order']},{suggestions['ma_order']})"
-            suggestions['explanation'] = "Both ACF and PACF tail off → ARMA model suggested"
+        p = cutoff_lag(pacf_vals)  # PACF cutoff → AR order
+        q = cutoff_lag(acf_vals)   # ACF cutoff → MA order
+        trend_note = ""
+        if q is None and len(acf_vals) > 1 and acf_vals[1] > 0.9:
+            trend_note = " The ACF decays very slowly, so the series likely has a trend; difference it first (ARIMA)."
+
+        if p == 0 and q == 0:
+            suggestions['model_type'] = "White noise"
+            suggestions['explanation'] = "No significant autocorrelation at any lag → the values look like white noise"
+        elif p is not None and q is None:
+            suggestions['ar_order'] = p
+            suggestions['model_type'] = f"AR({p})"
+            suggestions['explanation'] = f"PACF cuts off after lag {p} while the ACF tails off → AR model suggested.{trend_note}"
+        elif q is not None and p is None:
+            suggestions['ma_order'] = q
+            suggestions['model_type'] = f"MA({q})"
+            suggestions['explanation'] = f"ACF cuts off after lag {q} while the PACF tails off → MA model suggested"
+        elif p is None and q is None:
+            suggestions['ar_order'], suggestions['ma_order'] = 1, 1
+            suggestions['model_type'] = "ARMA(1,1)"
+            suggestions['explanation'] = f"Both ACF and PACF tail off → mixed ARMA model; start with ARMA(1,1).{trend_note}"
         else:
-            suggestions['model_type'] = "White Noise or Complex Pattern"
-            suggestions['explanation'] = "No clear cutoff detected; consider advanced diagnostics"
-        
+            # Both drop off quickly: the lower-order model is the simpler fit
+            if p <= q:
+                suggestions['ar_order'] = p
+                suggestions['model_type'] = f"AR({p})"
+            else:
+                suggestions['ma_order'] = q
+                suggestions['model_type'] = f"MA({q})"
+            suggestions['explanation'] = (
+                f"ACF cuts off after lag {q} and PACF after lag {p} → the simpler {suggestions['model_type']} model suggested"
+            )
+
         return suggestions
     
     def decompose_series(self, target_col: str, model: str = 'additive', 
@@ -574,10 +604,11 @@ class TimeSeriesAnalyzer:
         Returns:
             Path to saved metadata file
         """
-        # Resolve repository root (go up from `backend/src/core/eda`) and use top-level `workspace/metadata`
+        # Resolve the backend dir (go up from `backend/src/core/eda`) and use `backend/workspace/metadata`,
+        # the same place as the other EDA metadata
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        repo_root = os.path.abspath(os.path.join(current_dir, '..', '..', '..', '..'))
-        workspace_dir = os.path.join(repo_root, 'workspace', 'metadata')
+        backend_dir = os.path.abspath(os.path.join(current_dir, '..', '..', '..'))
+        workspace_dir = os.path.join(backend_dir, 'workspace', 'metadata')
         os.makedirs(workspace_dir, exist_ok=True)
         
         filename = f"timeseries_{analysis_type}_{file_id}.json"

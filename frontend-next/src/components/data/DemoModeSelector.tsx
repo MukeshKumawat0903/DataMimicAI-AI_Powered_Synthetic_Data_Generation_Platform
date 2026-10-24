@@ -10,7 +10,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, FlaskConical } from "lucide-react";
+import { AlertCircle, CheckCircle2, FlaskConical, Sparkles } from "lucide-react";
+import { IconTile } from "@/components/ui/icon-tile";
 import { useWorkspaceStore } from "@/lib/store/workspace";
 import { useLoadDemo } from "@/hooks/api/useUpload";
 import type { AppError } from "@/lib/api/types";
@@ -48,11 +49,14 @@ export function DemoModeSelector() {
   const loadError = error as AppError | null;
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <FlaskConical className="h-4 w-4 text-primary" />
-          Demo Mode
+    <Card className="bg-gradient-to-br from-violet-50 via-card to-sky-50 ring-violet-200/70 dark:from-violet-500/10 dark:via-card dark:to-sky-500/10 dark:ring-violet-400/20">
+      <CardHeader className="pb-1">
+        <CardTitle className="flex items-center gap-3 text-base">
+          <IconTile icon={FlaskConical} tone="violet" />
+          <span>
+            Demo Mode
+            <span className="block text-xs font-normal text-muted-foreground">No file? Try a ready-made dataset.</span>
+          </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -95,19 +99,20 @@ export function DemoModeSelector() {
           </Alert>
         )}
         {isSuccess && (
-          <Alert className="border-green-500/50 bg-green-50 dark:bg-green-950/20">
-            <AlertDescription className="text-green-700 dark:text-green-400 text-sm">
+          <Alert className="border-emerald-500/40 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+            <CheckCircle2 className="h-4 w-4" />
+            <AlertDescription className="text-emerald-700 dark:text-emerald-300 text-sm font-medium">
               Demo data loaded!
             </AlertDescription>
           </Alert>
         )}
 
         <Button
-          className="w-full"
-          variant="outline"
+          className="w-full gap-2"
           onClick={() => loadDemo(demoAlgorithm)}
           disabled={isPending}
         >
+          {!isPending && <Sparkles className="h-4 w-4" />}
           {isPending ? `Loading ${demoAlgorithm} demo…` : "Load Demo Data"}
         </Button>
       </CardContent>

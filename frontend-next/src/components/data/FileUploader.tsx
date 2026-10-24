@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Upload, FileText, X, AlertCircle } from "lucide-react";
+import { UploadCloud, FileSpreadsheet, X, AlertCircle, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUpload } from "@/hooks/api/useUpload";
 import { toast } from "sonner";
@@ -92,35 +92,41 @@ export function FileUploader() {
           <div
             {...getRootProps()}
             className={cn(
-              "flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-10 text-center cursor-pointer transition-colors",
+              "group flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-12 text-center cursor-pointer transition-all duration-200",
               isDragActive
-                ? "border-primary bg-primary/5"
-                : "border-muted-foreground/30 hover:border-primary/60 hover:bg-accent/30"
+                ? "border-primary bg-primary/10 scale-[1.01]"
+                : "border-primary/25 bg-gradient-to-b from-primary/[0.04] to-transparent hover:border-primary/60 hover:bg-primary/[0.06]"
             )}
           >
             <input {...getInputProps()} />
-            <Upload
+            <span
               className={cn(
-                "h-10 w-10 mb-3",
-                isDragActive ? "text-primary" : "text-muted-foreground"
+                "bg-brand-gradient mb-4 flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg shadow-indigo-500/30 transition-transform duration-200",
+                isDragActive ? "scale-110" : "group-hover:-translate-y-0.5"
               )}
-            />
-            <p className="text-sm font-medium">
+            >
+              <UploadCloud className="h-7 w-7" />
+            </span>
+            <p className="text-base font-semibold">
               {isDragActive
                 ? "Drop your CSV here…"
                 : "Drag & drop a CSV file, or click to browse"}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Maximum size: {formatBytes(MAX_SIZE)}
-            </p>
+            <div className="mt-3 flex flex-wrap justify-center gap-2 text-xs text-muted-foreground">
+              <span className="rounded-full bg-muted px-2.5 py-0.5">CSV only</span>
+              <span className="rounded-full bg-muted px-2.5 py-0.5">Maximum size: {formatBytes(MAX_SIZE)}</span>
+              <span className="rounded-full bg-muted px-2.5 py-0.5">Header row required</span>
+            </div>
           </div>
         )}
 
         {/* Selected file preview */}
         {selectedFile && (
-          <div className="flex items-center justify-between rounded-lg border px-4 py-3 bg-accent/40">
+          <div className="flex items-center justify-between rounded-xl border bg-accent/50 px-4 py-3">
             <div className="flex items-center gap-3">
-              <FileText className="h-5 w-5 text-primary shrink-0" />
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300">
+                <FileSpreadsheet className="h-5 w-5" />
+              </span>
               <div className="min-w-0">
                 <p className="text-sm font-medium truncate">{selectedFile.name}</p>
                 <p className="text-xs text-muted-foreground">
@@ -152,12 +158,13 @@ export function FileUploader() {
 
         {/* Success message */}
         {isSuccess && (
-          <Alert variant="default" className="border-green-500/50 bg-green-50 dark:bg-green-950/20">
+          <Alert variant="default" className="border-emerald-500/40 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+            <CheckCircle2 className="h-4 w-4" />
             {/* P3.3: tabIndex -1 so focus() can target it programmatically */}
             <AlertDescription
               ref={successRef}
               tabIndex={-1}
-              className="text-green-700 dark:text-green-400 text-sm outline-none"
+              className="text-emerald-700 dark:text-emerald-300 text-sm font-medium outline-none"
             >
               Dataset uploaded successfully!
             </AlertDescription>
@@ -175,6 +182,7 @@ export function FileUploader() {
         {/* Upload action */}
         {selectedFile && !isSuccess && (
           <Button
+            size="lg"
             className="w-full"
             onClick={handleUpload}
             disabled={isPending}

@@ -2,7 +2,8 @@
 
 import { SDV_ALGORITHM_INFO, SYNTHCITY_ALGORITHM_INFO } from "@/lib/constants";
 import { useWorkspaceStore } from "@/lib/store/workspace";
-import { Card, CardContent } from "@/components/ui/card";
+import { IconTile } from "@/components/ui/icon-tile";
+import { Sparkles } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -49,12 +50,13 @@ export function AlgorithmSelector({ mode }: AlgorithmSelectorProps) {
       </Select>
 
       {info && (
-        <Card className="bg-muted/30">
-          <CardContent className="pt-3 pb-3 space-y-0.5">
-            <p className="text-sm">{info.desc}</p>
+        <div className="flex items-start gap-3 rounded-xl bg-gradient-to-br from-violet-50 to-sky-50 px-4 py-3 ring-1 ring-inset ring-violet-200/70 dark:from-violet-500/10 dark:to-sky-500/10 dark:ring-violet-400/20">
+          <IconTile icon={Sparkles} tone="violet" size="sm" className="mt-0.5" />
+          <div className="space-y-0.5">
+            <p className="text-sm font-medium">{info.desc}</p>
             <p className="text-xs text-muted-foreground">{info.use}</p>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
     </div>
   );

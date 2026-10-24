@@ -11,3 +11,5 @@ notebooks
 *backend/src/core/explainability/docs
 *docs
 *.log
+# Runtime files written by the backend
+workspace/

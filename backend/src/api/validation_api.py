@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/validation", tags=["validation"])
 
 
 @router.get("/decision-report/{plan_id}")
-async def get_decision_report(
+def get_decision_report(
     plan_id: str = Path(..., description="Plan ID to retrieve validation results for")
 ) -> Dict[str, Any]:
     """

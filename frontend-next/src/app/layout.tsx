@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { QueryProvider } from "@/components/providers";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { KeyboardShortcutsInit } from "@/components/layout/KeyboardShortcutsInit";
+import { StoreHydrator } from "@/components/layout/StoreHydrator";
 import { StepIndicator } from "@/components/wizard/StepIndicator";
 import { ErrorBoundary } from "@/components/feedback/ErrorBoundary";
 import { Toaster } from "sonner";
@@ -31,7 +32,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={cn("font-sans", geistSans.variable)}>
+    <html lang="en" className={cn("font-sans", geistSans.variable)} suppressHydrationWarning>
+      <head>
+        {/* Apply the saved theme before first paint to avoid a light flash */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: "try{if(localStorage.getItem('theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}",
+          }}
+        />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
@@ -45,12 +54,13 @@ export default function RootLayout({
         <QueryProvider>
           {/* P1.1: Keyboard shortcuts Ctrl+1–4 */}
           <KeyboardShortcutsInit />
+          <StoreHydrator />
           <div className="flex min-h-screen bg-background">
             <AppSidebar />
             <div className="flex flex-1 flex-col overflow-hidden">
               {/* P1.4: Wizard step progress bar */}
               <StepIndicator />
-              <main id="main-content" className="flex-1 overflow-auto">
+              <main id="main-content" className="flex-1 overflow-auto bg-app-glow">
                 <ErrorBoundary>{children}</ErrorBoundary>
               </main>
             </div>

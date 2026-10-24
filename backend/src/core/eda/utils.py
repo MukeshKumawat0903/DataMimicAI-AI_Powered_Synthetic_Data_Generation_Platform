@@ -13,7 +13,8 @@ def outlier_drift_report_pdf(stats, drift_stats):
     pdf.cell(0, 10, "Drift Statistics:", ln=True)
     for row in drift_stats:
         drifted = "YES" if row.get("drifted") else "NO"
-        pdf.cell(0, 8, f"{row['column']}: KS={row.get('ks_stat', 0):.2f}, W={row.get('wasserstein_distance', 0):.2f}, Drifted: {drifted}", ln=True)
+        w = f", W={row['wasserstein_distance']:.2f}" if "wasserstein_distance" in row else ""
+        pdf.cell(0, 8, f"{row['column']}: KS={row.get('ks_stat', 0):.2f}{w}, Drifted: {drifted}", ln=True)
     tf = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
     pdf.output(tf.name)
     tf.close()

@@ -333,34 +333,35 @@ class OutlierDetector:
         df_ts[datetime_col] = pd.to_datetime(df_ts[datetime_col])
         df_ts = df_ts.dropna().sort_values(datetime_col)
         df_ts.set_index(datetime_col, inplace=True)
-        
+        # Several series in one table (e.g. one row per stock per day) repeat each timestamp;
+        # average them into one series so frequency and STL see one value per time step
+        df_ts = df_ts.groupby(level=0).mean()
+
         if len(df_ts) < 20:
             raise OutlierDetectionError("Need at least 20 observations for STL decomposition.")
-        
+
         # Infer frequency if not provided
         if freq is None:
-            freq = pd.infer_freq(df_ts.index)
+            freq = pd.infer_freq(df_ts.index) if len(df_ts) >= 3 else None
             if freq is None:
                 # Estimate frequency from median time difference
                 time_diffs = df_ts.index.to_series().diff().dropna()
-                if len(time_diffs) > 0:
-                    median_diff = time_diffs.median()
-                    # Convert Timedelta to frequency string
-                    if median_diff <= pd.Timedelta(minutes=1):
-                        freq = 'T'  # Minute
-                    elif median_diff <= pd.Timedelta(hours=1):
-                        freq = 'H'  # Hour
-                    elif median_diff <= pd.Timedelta(days=1):
-                        freq = 'D'  # Day
-                    elif median_diff <= pd.Timedelta(weeks=1):
-                        freq = 'W'  # Week
-                    else:
-                        freq = 'M'  # Month (approximate)
-                    
-                    # Resample to inferred frequency
-                    df_ts = df_ts.resample(freq).mean().dropna()
-                else:
+                if len(time_diffs) == 0:
                     raise OutlierDetectionError("Could not infer time-series frequency from data.")
+                median_diff = time_diffs.median()
+                # Convert Timedelta to frequency string
+                if median_diff <= pd.Timedelta(minutes=1):
+                    freq = 'T'  # Minute
+                elif median_diff <= pd.Timedelta(hours=1):
+                    freq = 'H'  # Hour
+                elif median_diff <= pd.Timedelta(days=1):
+                    freq = 'D'  # Day
+                elif median_diff <= pd.Timedelta(weeks=1):
+                    freq = 'W'  # Week
+                else:
+                    freq = 'M'  # Month (approximate)
+        # Regular time steps (gaps such as weekends are dropped)
+        df_ts = df_ts.resample(freq).mean().dropna()
         
         # Determine seasonal period based on frequency
         freq_to_period = {
@@ -376,7 +377,8 @@ class OutlierDetector:
         
         # STL decomposition
         try:
-            stl = STL(df_ts[value_col], seasonal=seasonal_period, robust=True)
+            # `period` is the seasonality; `seasonal` would be the (odd) smoother length
+            stl = STL(df_ts[value_col], period=seasonal_period, robust=True)
             result_stl = stl.fit()
             residuals = result_stl.resid
         except Exception as e:

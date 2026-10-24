@@ -11,24 +11,27 @@ interface BackendProfileResponse {
     n_unique: number;
     most_common?: string | number;
   }>;
-  summary: { n_rows: number };
-  suggestions: Array<{ column: string; action: string }>;
+  summary: ProfileResponse["summary"];
+  suggestions: Array<{ column: string; action: string; fix_type: string }>;
 }
 
 function mapResponse(fileId: string, res: BackendProfileResponse): ProfileResponse {
   return {
     file_id: fileId,
     row_count: res.summary?.n_rows ?? 0,
-    columns: (res.profile ?? []).map((p) => ({
-      column: p.column,
-      dtype: p.dtype,
-      missing_pct: p["missing_%"] ?? 0,
-      unique_count: p.n_unique ?? 0,
-      top_value: p.most_common,
-      suggestions: (res.suggestions ?? [])
-        .filter((s) => s.column === p.column)
-        .map((s) => s.action),
-    })),
+    summary: res.summary,
+    columns: (res.profile ?? []).map((p) => {
+      const mine = (res.suggestions ?? []).filter((s) => s.column === p.column);
+      return {
+        column: p.column,
+        dtype: p.dtype,
+        missing_pct: p["missing_%"] ?? 0,
+        unique_count: p.n_unique ?? 0,
+        top_value: p.most_common,
+        suggestions: mine.map((s) => s.action),
+        fixes: mine.map((s) => ({ action: s.action, fix_type: s.fix_type })),
+      };
+    }),
   };
 }
 

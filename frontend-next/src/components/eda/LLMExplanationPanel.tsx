@@ -1,99 +1,133 @@
 "use client";
 
 import { useState } from "react";
-import { useLLMExplanation } from "@/hooks/api/useLLMExplanation";
+import { useLLMExplanation, useLLMScopes } from "@/hooks/api/useLLMExplanation";
 import { useWorkspaceStore } from "@/lib/store/workspace";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertTriangle, Bot, CheckCircle2, Circle, Loader2, RefreshCw } from "lucide-react";
-
-const STEP_LABELS = [
-  "Loading dataset",
-  "Detecting issues",
-  "Gathering context",
-  "Querying LLM",
-  "Parsing response",
-  "Validating facts",
-  "Preparing output",
-];
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertTriangle, Bot, CheckCircle2, Loader2, RefreshCw, XCircle } from "lucide-react";
+import { IconTile } from "@/components/ui/icon-tile";
+import { humanize } from "@/lib/utils";
+import type { AppError, LLMExplanationOptions } from "@/lib/api/types";
 
 export function LLMExplanationPanel() {
   const fileId = useWorkspaceStore((s) => s.fileId);
-  const [enabled, setEnabled] = useState(false);
+  const columns = useWorkspaceStore((s) => s.columns);
+  const { data: scopes } = useLLMScopes();
 
-  const { data, isLoading, error, refetch } = useLLMExplanation(fileId, enabled);
+  const [scope, setScope] = useState("dataset_overview");
+  const [tone, setTone] = useState("clear");
+  const [picked, setPicked] = useState<string[]>([]);
+  // The options of the last run; the query only fires once the user asks for it
+  const [request, setRequest] = useState<LLMExplanationOptions | null>(null);
+
+  const needsColumns = scopes?.scopes[scope]?.requires_columns ?? false;
+  const { data, isFetching, error, refetch } = useLLMExplanation(
+    fileId,
+    request ?? { scope, tone },
+    request !== null
+  );
 
   function handleRun() {
-    if (enabled) {
-      refetch();
-    } else {
-      setEnabled(true);
-    }
+    const next = { scope, tone, columns: needsColumns ? picked : undefined };
+    if (JSON.stringify(next) === JSON.stringify(request)) refetch();
+    else setRequest(next);
   }
 
-  const steps = data?.steps ?? STEP_LABELS.map((label, i) => ({
-    step: i + 1,
-    label,
-    status: "pending" as const,
-  }));
+  function togglePicked(col: string) {
+    setPicked((prev) => (prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]));
+  }
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between py-3">
-        <div className="flex items-center gap-2">
-          <Bot className="h-4 w-4 text-blue-500" />
+      <CardHeader className="flex flex-row items-start gap-3 py-3">
+        <IconTile icon={Bot} />
+        <div className="space-y-1">
           <CardTitle className="text-base">AI Diagnostics</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            An LLM explains what the analysis found, grounded in the computed statistics. Every answer is
+            checked before it&apos;s shown.
+          </p>
         </div>
-        <Button
-          size="sm"
-          variant={enabled ? "outline" : "default"}
-          onClick={handleRun}
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-          ) : enabled ? (
-            <RefreshCw className="h-3.5 w-3.5 mr-1" />
-          ) : null}
-          {isLoading ? "Analysing…" : enabled ? "Regenerate" : "Run AI Analysis"}
-        </Button>
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Pipeline steps */}
-        <div className="flex gap-2 flex-wrap">
-          {steps.map((s) => (
-            <div
-              key={s.step}
-              className="flex items-center gap-1 text-xs px-2 py-1 rounded-full border"
-            >
-              {s.status === "done" ? (
-                <CheckCircle2 className="h-3 w-3 text-green-500" />
-              ) : s.status === "running" ? (
-                <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
-              ) : s.status === "error" ? (
-                <AlertTriangle className="h-3 w-3 text-destructive" />
-              ) : (
-                <Circle className="h-3 w-3 text-muted-foreground" />
-              )}
-              <span
-                className={
-                  s.status === "done"
-                    ? "text-green-700"
-                    : s.status === "running"
-                    ? "text-blue-700"
-                    : "text-muted-foreground"
-                }
-              >
-                {s.label}
-              </span>
-            </div>
-          ))}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="llm-scope">Focus</Label>
+            <Select value={scope} onValueChange={(v) => setScope(v as string)}>
+              <SelectTrigger id="llm-scope" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.keys(scopes?.scopes ?? { dataset_overview: null }).map((key) => (
+                  <SelectItem key={key} value={key}>
+                    {humanize(key)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {scopes?.scopes[scope] && (
+              <p className="text-xs text-muted-foreground">{scopes.scopes[scope].description}</p>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="llm-tone">Tone</Label>
+            <Select value={tone} onValueChange={(v) => setTone(v as string)}>
+              <SelectTrigger id="llm-tone" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.keys(scopes?.tones ?? { clear: "" }).map((key) => (
+                  <SelectItem key={key} value={key}>
+                    {humanize(key)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {scopes?.tones[tone] && <p className="text-xs text-muted-foreground">{scopes.tones[tone]}</p>}
+          </div>
         </div>
 
-        {isLoading && !data && (
+        {needsColumns && (
+          <div className="space-y-1.5">
+            <Label>Columns to analyse</Label>
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
+              {columns.map((col) => (
+                <div key={col} className="flex items-center gap-1.5">
+                  <Checkbox
+                    id={`llm-col-${col}`}
+                    checked={picked.includes(col)}
+                    onCheckedChange={() => togglePicked(col)}
+                  />
+                  <Label htmlFor={`llm-col-${col}`} className="text-sm font-mono cursor-pointer">
+                    {col}
+                  </Label>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <Button
+          onClick={handleRun}
+          disabled={isFetching || (needsColumns && picked.length === 0)}
+          className="gap-1.5"
+        >
+          {isFetching ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : request ? (
+            <RefreshCw className="h-3.5 w-3.5" />
+          ) : null}
+          {isFetching ? "Analysing…" : request ? "Run again" : "Run AI analysis"}
+        </Button>
+
+        {isFetching && !data && (
           <div className="space-y-2">
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-5/6" />
@@ -104,35 +138,45 @@ export function LLMExplanationPanel() {
         {error && (
           <p className="text-sm text-destructive flex items-center gap-1">
             <AlertTriangle className="h-3.5 w-3.5" />
-            AI analysis failed. Check backend logs and try again.
+            AI analysis failed: {(error as Partial<AppError>).message ?? "please try again."}
           </p>
         )}
 
         {data && (
           <div className="space-y-3">
-            {data.validation_pct < 70 && (
-              <div className="flex items-center gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                Low validation confidence ({data.validation_pct.toFixed(0)}%). Some facts may be
-                inaccurate — review manually.
+            {!data.validated && data.source === "facts_summary" && (
+              <div className="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                The AI&apos;s answer didn&apos;t pass the checks below, so it isn&apos;t shown. Instead, here
+                is a summary built directly from the computed statistics.
               </div>
             )}
-            <div className="flex justify-between items-center">
-              <p className="text-sm font-medium">Explanation</p>
-              <Badge variant="outline" className="text-xs">
-                {data.validation_pct.toFixed(0)}% validated
+            {!data.validated && data.source === "llm" && (
+              <div className="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                The answer didn&apos;t pass all checks ({data.validation_pct}%), so it may be generic or
+                inaccurate. Review it against the analysis results.
+              </div>
+            )}
+            <div className="flex flex-wrap gap-3">
+              {data.checks.map((c) => (
+                <span key={c.label} className="flex items-center gap-1 text-xs">
+                  {c.passed ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                  ) : (
+                    <XCircle className="h-3.5 w-3.5 text-destructive" />
+                  )}
+                  {c.label}
+                </span>
+              ))}
+              <Badge variant="outline" className="text-xs ml-auto">
+                {data.source === "facts_summary" ? "Summary from statistics" : `${data.validation_pct}% of checks passed`}
               </Badge>
             </div>
-            <p className="text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">
-              {data.explanation}
-            </p>
+            <div className="rounded-xl border bg-gradient-to-br from-violet-50/70 to-card p-4 dark:from-violet-500/10 dark:to-card">
+              <p className="text-sm leading-relaxed whitespace-pre-wrap">{data.explanation}</p>
+            </div>
           </div>
-        )}
-
-        {!enabled && !isLoading && (
-          <p className="text-sm text-muted-foreground">
-            Click &ldquo;Run AI Analysis&rdquo; to generate an AI-powered explanation of your dataset&apos;s quality issues.
-          </p>
         )}
       </CardContent>
     </Card>

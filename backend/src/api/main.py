@@ -1,5 +1,11 @@
 # Standard library
 import os
+
+# Cap joblib/loky worker processes. On Windows each worker re-imports the ML
+# stack (~280 MB); n_jobs=-1 used to start one per CPU core and could exhaust
+# memory and kill the server during SynthCity training. Override via env.
+os.environ.setdefault("LOKY_MAX_CPU_COUNT", "2")
+
 import io
 import uuid
 import json
@@ -28,6 +34,7 @@ from src.core.data_processing import (
     detect_metadata,
     prepare_training_data as data_loader,
     process_demo_data,
+    backup_original,
 )
 
 # LAZY: Heavy imports moved inside endpoints where they're used
@@ -62,7 +69,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["Content-Disposition"],
+    expose_headers=["Content-Disposition", "X-Synthetic-Version"],
 )
 
 app.include_router(eda_feature_router)
@@ -181,6 +188,7 @@ async def upload_dataset(file: UploadFile):
         file_path = os.path.join(UPLOAD_DIR, f"{file_id}.csv")
         with open(file_path, "wb") as f:
             f.write(content)
+        backup_original(UPLOAD_DIR, file_id)
 
         logger.info(f"Uploaded file '{file.filename}' as '{file_id}'")
         
@@ -223,7 +231,7 @@ def sanitize_json(data):
         raise
 
 @app.post("/load-demo")
-async def load_demo(
+def load_demo(
         algorithm: str = Query(
             default="CTGAN",
             title="Demo Algorithm",
@@ -266,7 +274,7 @@ async def load_demo(
         raise HTTPException("Data processing failed: ", 500, detail=str(e))
 
 @app.post("/generate")
-async def generate_data(
+def generate_data(
     file_id: str,
     algorithm: str = Query("CTGAN", min_length=1),
     num_rows: int = Query(1000, ge=1, le=5_000_000),
@@ -293,17 +301,6 @@ async def generate_data(
         logger.info("Detecting metadata")
         metadata = detect_metadata(data_dict)
 
-        # --- SYNTHCITY PARAMETER MAPPING ---
-        ITERATION_PARAMS = {
-            'ddpm': 'n_iter',
-            'ctgan': 'n_iter',
-            'tvae': 'n_iter', 
-            'dpgan': 'n_iter', 
-            'pategan': 'n_iter', 
-            'privbayes': None,  # No iteration parameter
-            'arf': None         # No iteration parameter
-        }
-
         # --- Handle PARS Validation (still SDV logic) ---
         if algorithm == "PARS":
             if not metadata.sequence_key:
@@ -317,22 +314,9 @@ async def generate_data(
             logger.info(f"Creating SynthCity generator for: {algorithm} with epochs={epochs}")
             
             # LAZY: Import SynthCity generator only when needed (not at startup)
-            from src.core.synth.synthcity_generator import SynthCitySyntheticGenerator
-            
-            # Build plugin_kwargs with correct parameter name (conservative approach)
-            synthcity_plugin_kwargs = {}
-            iteration_param_name = ITERATION_PARAMS.get(algorithm)
-            if iteration_param_name:
-                synthcity_plugin_kwargs[iteration_param_name] = epochs
-                logger.info(f"Applying '{iteration_param_name}={epochs}' for {algorithm} model.")
-            else:
-                logger.info(f"Using default parameters for {algorithm} (no epochs parameter supported)")
+            from src.core.synth.synthcity_generator import create_synthcity_generator
 
-            generator = SynthCitySyntheticGenerator(
-                algorithm=algorithm,
-                target_column=target_column,
-                plugin_kwargs=synthcity_plugin_kwargs
-            )
+            generator = create_synthcity_generator(algorithm, epochs=epochs, target_column=target_column)
             synthetic_data = generator.generate(real_data=data, num_rows=num_rows)
 
         # --- SDV/PARS Section (Existing) ---
@@ -395,7 +379,12 @@ async def generate_data(
             media_type="text/csv"
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
+        from src.core.synth.synthcity_generator import InsufficientResourcesError
+        if isinstance(e, InsufficientResourcesError):
+            raise HTTPException(503, str(e))
         logger.error(f"Generation failed: {str(e)}")
         raise HTTPException(500, f"Data generation failed: {str(e)}")
 
@@ -417,7 +406,7 @@ def health_check():
         raise HTTPException(500, "Health check failed")
 
 @app.post("/evaluate_models")
-async def evaluate_models(
+def evaluate_models(
     file_id: str,
     target_column: str = "Survived",
     epochs: int = 100
@@ -510,7 +499,7 @@ async def evaluate_models(
 
 # Visualization
 @app.get("/visualize")
-async def visualize_data(
+def visualize_data(
     file_id: str,
     tab: str = Query(..., description="Which visualization to render"),
     column: str = None,
@@ -580,6 +569,46 @@ async def visualize_data(
         raise HTTPException(500, f"Visualization failed: {str(e)}")
 
 
+def _table_summary(df: pd.DataFrame) -> dict:
+    """Basic shape and quality facts for the real-vs-synthetic comparison table."""
+    numeric = df.select_dtypes(include="number").shape[1]
+    return {
+        "rows": int(len(df)),
+        "columns": int(df.shape[1]),
+        "missing_pct": round(float(df.isna().mean().mean() * 100), 2) if df.size else 0.0,
+        "duplicate_rows": int(df.duplicated().sum()),
+        "numeric_columns": int(numeric),
+        "categorical_columns": int(df.shape[1] - numeric),
+    }
+
+
+def _privacy_metrics(real: pd.DataFrame, synthetic: pd.DataFrame) -> dict:
+    """Row-level privacy checks (sdmetrics). 1.0 means no sign of copied real records."""
+    try:
+        from sdmetrics.single_table import DCRBaselineProtection, NewRowSynthesis
+
+        common = [c for c in real.columns if c in synthetic.columns]
+        real, synthetic = real[common], synthetic[common]
+        metadata = {"columns": {
+            c: {"sdtype": "numerical" if pd.api.types.is_numeric_dtype(real[c]) else "categorical"}
+            for c in common
+        }}
+        sample = min(len(synthetic), 2000)  # keep it quick on large tables
+        return {
+            # Distance to the closest real record, compared with random data
+            "dcr_baseline_protection": float(
+                DCRBaselineProtection.compute(real, synthetic, metadata, num_rows_subsample=sample)
+            ),
+            # Share of synthetic rows that are not copies of a real row
+            "new_row_synthesis": float(
+                NewRowSynthesis.compute(real, synthetic, metadata, synthetic_sample_size=sample)
+            ),
+        }
+    except Exception as e:
+        logger.warning(f"Privacy metrics unavailable: {e}")
+        return {"error": str(e)}
+
+
 @app.get("/metrics")
 def compute_metrics(file_id: str, columns: str = Query(None, description="Comma-separated columns to evaluate")):
     """Compute lightweight similarity metrics between real and synthetic for selected columns.
@@ -644,7 +673,12 @@ def compute_metrics(file_id: str, columns: str = Query(None, description="Comma-
             except Exception as e:
                 results[c] = {"error": str(e)}
 
-        return {"file_id": file_id, "metrics": results}
+        return {
+            "file_id": file_id,
+            "metrics": results,
+            "privacy": _privacy_metrics(real_data, synthetic_data),
+            "summary": {"real": _table_summary(real_data), "synthetic": _table_summary(synthetic_data)},
+        }
 
     except HTTPException:
         raise

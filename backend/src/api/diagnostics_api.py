@@ -58,7 +58,7 @@ def convert_numpy_types(obj: Any) -> Any:
 
 
 @router.post("/build")
-async def build_diagnostics_endpoint(
+def build_diagnostics_endpoint(
     file_id: str = Body(..., description="File identifier for the dataset"),
     target_columns: Optional[list] = Body(None, description="Specific columns to analyze (None = all)")
 ) -> Dict[str, Any]:
@@ -142,7 +142,7 @@ async def build_diagnostics_endpoint(
 
 
 @router.post("/interpret")
-async def interpret_diagnostics(
+def interpret_diagnostics(
     diagnostics_input: Dict[str, Any] = Body(
         ...,
         description="Diagnostics output from diagnostics_builder",

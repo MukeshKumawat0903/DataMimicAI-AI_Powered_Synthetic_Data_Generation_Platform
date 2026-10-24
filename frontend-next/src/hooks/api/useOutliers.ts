@@ -15,8 +15,15 @@ interface BackendOutliersResponse {
 }
 
 function mapResponse(fileId: string, res: BackendOutliersResponse): OutliersResponse {
+  const indices: Record<string, number[]> = {};
+  for (const byColumn of Object.values(res.results ?? {})) {
+    for (const [column, rows] of Object.entries(byColumn ?? {})) {
+      indices[column] = Array.from(new Set([...(indices[column] ?? []), ...rows]));
+    }
+  }
   return {
     file_id: fileId,
+    indices,
     methods_used: Object.keys(res.results ?? {}),
     // Only columns that actually have outliers are worth showing / remediating
     results: (res.stats ?? [])
@@ -34,6 +41,7 @@ function mapResponse(fileId: string, res: BackendOutliersResponse): OutliersResp
 const BACKEND_METHOD: Record<string, string> = {
   IQR: "iqr",
   ZScore: "zscore",
+  MAD: "mad",
   IsolationForest: "isolation_forest",
   LOF: "lof",
 };
@@ -67,8 +75,15 @@ export function useRemediateOutliers() {
       }
       let result: unknown;
       for (const [method, columns] of Object.entries(grouped)) {
+        const body: Record<string, unknown> = {
+          // Save over the working dataset (like the other cleaning actions) so later steps use it
+          output_file_id: req.file_id,
+        };
+        if (method === "remove") {
+          body.outlier_indices = Object.fromEntries(columns.map((c) => [c, req.indices?.[c] ?? []]));
+        }
         result = await apiClient
-          .post(`/eda/outliers/remediate`, {}, {
+          .post(`/eda/outliers/remediate`, body, {
             params: {
               file_id: req.file_id,
               method,
@@ -80,8 +95,8 @@ export function useRemediateOutliers() {
       return result;
     },
     onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: ["outliers", vars.file_id] });
-      qc.invalidateQueries({ queryKey: ["dataset", vars.file_id] });
+      // The dataset changed in place, so every cached result for it is stale
+      qc.invalidateQueries({ predicate: (q) => q.queryKey.includes(vars.file_id) });
     },
   });
 }

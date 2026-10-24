@@ -161,16 +161,34 @@ class PIIScanner:
         logger.info(f"Fast PII scan completed. Found {pii_count} columns with potential PII.")
         return results
     
+    @staticmethod
+    def _name_tokens(name: str) -> List[str]:
+        """'customerEmail_Address' -> ['customer', 'email', 'address']"""
+        spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", name)
+        return [t for t in re.split(r"[^A-Za-z0-9]+", spaced.lower()) if t]
+
+    @classmethod
+    def _keyword_matches(cls, keyword: str, tokens: List[str]) -> bool:
+        kw_tokens = cls._name_tokens(keyword)
+        # Multi-word keywords (first_name, date_of_birth) must appear as consecutive tokens
+        if len(kw_tokens) > 1:
+            n = len(kw_tokens)
+            return any(tokens[i:i + n] == kw_tokens for i in range(len(tokens) - n + 1)) \
+                or "".join(kw_tokens) in tokens
+        kw = kw_tokens[0]
+        # Short words and words common inside other words (cap-acity, e-state, al-location)
+        # only count as a whole token; longer ones may start or end a compound ("phonenumber")
+        if len(kw) < 5 or kw in ("state", "location"):
+            return kw in tokens
+        return any(t == kw or t.startswith(kw) or t.endswith(kw) for t in tokens)
+
     def _check_column_name(self, column: str) -> List[str]:
-        """Check if column name matches known PII patterns."""
-        detected = []
-        column_lower = column.lower()
-        
-        for pii_type, keywords in PII_COLUMN_NAMES.items():
-            if any(keyword in column_lower for keyword in keywords):
-                detected.append(pii_type)
-        
-        return detected
+        """Check if column name matches known PII patterns (whole name tokens, not substrings)."""
+        tokens = self._name_tokens(column)
+        return [
+            pii_type for pii_type, keywords in PII_COLUMN_NAMES.items()
+            if any(self._keyword_matches(keyword, tokens) for keyword in keywords)
+        ]
     
     def _check_data_patterns(self, series: pd.Series) -> Dict[str, int]:
         """Check data values against PII regex patterns."""

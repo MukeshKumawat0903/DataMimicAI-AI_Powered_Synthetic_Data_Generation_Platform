@@ -29,13 +29,21 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Radar } from "lucide-react";
+import { IconTile } from "@/components/ui/icon-tile";
 import { toast } from "sonner";
-import type { OutlierResult } from "@/lib/api/types";
+import type { OutlierResult, RemediationAction } from "@/lib/api/types";
+import { CooksDistanceSection } from "./CooksDistanceSection";
 
-const DETECTION_METHODS = ["IQR", "ZScore", "IsolationForest", "LOF"] as const;
+const DETECTION_METHODS = ["IQR", "ZScore", "MAD", "IsolationForest", "LOF"] as const;
 type DetectionMethod = (typeof DETECTION_METHODS)[number];
-type RemediationAction = "remove" | "cap" | "transform";
+const REMEDIATION_OPTIONS: { value: RemediationAction; label: string }[] = [
+  { value: "cap", label: "Cap extreme values" },
+  { value: "winsorize", label: "Winsorize" },
+  { value: "remove", label: "Remove rows" },
+  { value: "bin", label: "Bin into ranges" },
+  { value: "transform", label: "Log transform" },
+];
 
 export function OutlierCard() {
   const fileId = useWorkspaceStore((s) => s.fileId);
@@ -70,10 +78,12 @@ export function OutlierCard() {
     remediate.mutate(
       {
         file_id: fileId,
-        remediations: Object.entries(remediations).map(([column, action]) => ({
+        // Every listed column is remediated; untouched dropdowns mean their default ("cap")
+        remediations: affectedColumns.map((column) => ({
           column,
-          action,
+          action: remediations[column] ?? "cap",
         })),
+        indices: data?.indices,
       },
       {
         onSuccess: () => {
@@ -95,14 +105,18 @@ export function OutlierCard() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between py-3">
             <CollapsibleTrigger
-              className="flex items-center gap-2 text-sm font-medium"
+              className="flex items-center gap-3 text-sm font-medium"
             >
               {open ? (
                   <ChevronDown className="h-4 w-4" />
                 ) : (
                   <ChevronRight className="h-4 w-4" />
                 )}
-              <CardTitle className="text-base">Outlier Detection</CardTitle>
+              <IconTile icon={Radar} tone="orange" />
+              <span className="text-left">
+                <CardTitle className="text-base">Outlier Detection</CardTitle>
+                <span className="block text-xs font-normal text-muted-foreground">Unusual values by five methods, with remediation</span>
+              </span>
             </CollapsibleTrigger>
             <div className="flex items-center gap-2">
               {data && (
@@ -114,7 +128,7 @@ export function OutlierCard() {
                   Remediate
                 </Button>
               )}
-              <Button size="sm" variant="outline" onClick={handleRun}>
+              <Button size="sm" variant={triggered ? "outline" : "default"} onClick={handleRun}>
                 {triggered ? "Re-run" : "Run Detection"}
               </Button>
             </div>
@@ -187,6 +201,7 @@ export function OutlierCard() {
                   </TableBody>
                 </Table>
               )}
+              <CooksDistanceSection />
             </CardContent>
           </CollapsibleContent>
         </Card>
@@ -212,9 +227,11 @@ export function OutlierCard() {
                   }
                   aria-label={`Remediation action for ${col}`}
                 >
-                  <option value="cap">Cap (Winsorize)</option>
-                  <option value="remove">Remove rows</option>
-                  <option value="transform">Log transform</option>
+                  {REMEDIATION_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             ))}

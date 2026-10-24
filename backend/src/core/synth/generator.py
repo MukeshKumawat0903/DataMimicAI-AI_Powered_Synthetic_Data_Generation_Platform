@@ -60,6 +60,7 @@ class SDVSyntheticGenerator:
             self.synthesizer = PARSynthesizer(
                 self.metadata,
                 context_columns=self.context_columns,
+                epochs=self.kwargs.get("epochs", 128),
                 verbose=True
             )
 

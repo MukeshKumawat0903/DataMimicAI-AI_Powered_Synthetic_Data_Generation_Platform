@@ -21,9 +21,17 @@ function createApiClient(): AxiosInstance {
   // Normalize errors to AppError shape
   instance.interceptors.response.use(
     (res) => res,
-    (err: AxiosError) => {
+    async (err: AxiosError) => {
       const status = err.response?.status ?? 0;
-      const data = err.response?.data as Record<string, unknown> | undefined;
+      let data = err.response?.data as Record<string, unknown> | undefined;
+      // File downloads use responseType "blob", so error bodies arrive as a Blob
+      if (typeof Blob !== "undefined" && (data as unknown) instanceof Blob) {
+        try {
+          data = JSON.parse(await (data as unknown as Blob).text());
+        } catch {
+          data = undefined;
+        }
+      }
       const message =
         (data?.detail as string) ||
         (data?.message as string) ||

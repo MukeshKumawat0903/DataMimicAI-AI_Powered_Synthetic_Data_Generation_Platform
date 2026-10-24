@@ -60,6 +60,44 @@ def load_df_by_file_id(file_id: str) -> pd.DataFrame:
 
 
 # Request/Response Models
+# Which diagnostic issue types each scope is about (dataset_overview / column_analysis: all)
+SCOPE_ISSUE_TYPES = {
+    "outlier_analysis": {"outliers"},
+    "correlation_analysis": {"high_correlation"},
+    "time_series_analysis": {"drift"},
+}
+SEVERITY_RANK = {"high": 0, "medium": 1, "low": 2}
+
+
+def _facts_summary(diagnostics: dict, scope: str, columns: Optional[list], n_rows: int, n_cols: int) -> str:
+    """Plain summary of the computed diagnostics, used when the LLM text fails validation."""
+    issues = diagnostics.get("diagnostics", [])
+    if scope in SCOPE_ISSUE_TYPES:
+        issues = [i for i in issues if i.get("issue_type") in SCOPE_ISSUE_TYPES[scope]]
+    if columns:
+        issues = [i for i in issues if set(i.get("affected_columns", [])) & set(columns)]
+
+    lines = [f"The dataset has {n_rows:,} rows and {n_cols} columns."]
+    if not issues:
+        lines.append("The analysis found no issues of this kind.")
+        return "\n".join(lines)
+    by_severity = {s: sum(1 for i in issues if i.get("severity") == s) for s in SEVERITY_RANK}
+    lines.append(
+        f"The analysis found {len(issues)} issue(s): {by_severity['high']} high, "
+        f"{by_severity['medium']} medium and {by_severity['low']} low severity."
+    )
+    for i in sorted(issues, key=lambda i: SEVERITY_RANK.get(i.get("severity"), 3))[:8]:
+        issue = str(i.get("issue_type", "issue")).replace("_", " ")
+        metric = str(i.get("metric_name", "")).replace("_", " ")
+        value = i.get("metric_value")
+        value_text = f"{value:.2f}" if isinstance(value, (int, float)) else str(value)
+        lines.append(
+            f"- {issue.capitalize()} in {', '.join(i.get('affected_columns', []))} "
+            f"({metric} {value_text}; {i.get('severity', 'unknown')} severity)"
+        )
+    return "\n".join(lines)
+
+
 class ExplanationRequest(BaseModel):
     """Request model for explanation generation."""
     file_id: str = Field(..., description="File identifier for the uploaded dataset")
@@ -94,7 +132,7 @@ class ExplanationResponse(BaseModel):
 
 
 @router.post("/explain", response_model=ExplanationResponse)
-async def generate_explanation(request: ExplanationRequest = Body(...)):
+def generate_explanation(request: ExplanationRequest = Body(...)):
     """
     Generate AI-powered data explanation using the LLM pipeline.
     
@@ -290,6 +328,12 @@ async def generate_explanation(request: ExplanationRequest = Body(...)):
         # Check if validation failed (fallback message)
         fallback_msg = "The analysis highlights notable patterns in the data, but the explanation could not be confidently validated."
         is_validated = validated_explanation.strip() != fallback_msg
+        if not is_validated:
+            # The LLM text didn't pass the fact check; say what the diagnostics found instead,
+            # built only from computed values so every number is exact
+            validated_explanation = _facts_summary(
+                diagnostics, request.scope, request.columns, len(df), len(df.columns)
+            )
         
         logger.info(f"Pipeline completed. Validated: {is_validated}")
         
@@ -305,7 +349,8 @@ async def generate_explanation(request: ExplanationRequest = Body(...)):
             "medium_severity_issues": diagnostics["summary"]["medium_severity_count"],
             "low_severity_issues": diagnostics["summary"]["low_severity_count"],
             "raw_explanation_length": len(raw_explanation),
-            "validated_explanation_length": len(validated_explanation)
+            "validated_explanation_length": len(validated_explanation),
+            "explanation_source": "llm" if is_validated else "facts_summary"
         }
         
         # Include baseline guard status if available

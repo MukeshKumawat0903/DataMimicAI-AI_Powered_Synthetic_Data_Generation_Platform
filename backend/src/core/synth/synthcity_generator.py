@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import psutil
 import threading
@@ -14,6 +15,32 @@ import logging
 # Set up logging
 logger = logging.getLogger(__name__)
 
+# SynthCity loads torch and trains in-process; below this much free RAM the
+# backend process can be killed mid-training, so refuse up front instead.
+MIN_FREE_MEMORY_GB = float(os.environ.get("SYNTHCITY_MIN_FREE_MEMORY_GB", "2"))
+
+
+class InsufficientResourcesError(RuntimeError):
+    """Raised when there isn't enough free memory to train a SynthCity model safely."""
+
+
+def create_synthcity_generator(algorithm, epochs=None, target_column="Survived"):
+    """Build a generator, passing `epochs` as the plugin's iteration parameter when it has one."""
+    from src.core.synth.config import SYNTHCITY_ITERATION_PARAMS
+
+    plugin_kwargs = {}
+    iteration_param = SYNTHCITY_ITERATION_PARAMS.get(algorithm)
+    if iteration_param and epochs:
+        plugin_kwargs[iteration_param] = epochs
+        logger.info(f"Applying '{iteration_param}={epochs}' for {algorithm} model.")
+    else:
+        logger.info(f"Using default parameters for {algorithm} (no epochs parameter supported)")
+    return SynthCitySyntheticGenerator(
+        algorithm=algorithm,
+        target_column=target_column,
+        plugin_kwargs=plugin_kwargs
+    )
+
 class SynthCitySyntheticGenerator:
     """
     Modular SynthCity-based synthetic data generator with performance optimizations.
@@ -27,7 +54,9 @@ class SynthCitySyntheticGenerator:
         
         # --- PERFORMANCE SAFEGUARDS ---
         logger.info(f"Initializing {algorithm} with performance optimizations")
-        
+        # Check before importing torch, which alone takes a lot of memory
+        self._check_system_resources()
+
         # LAZY LOAD: Import torch only when needed for CPU/GPU setup
         # Limit CPU usage for intensive models
         if algorithm in ['ddpm', 'ctgan', 'tvae', 'dpgan', 'pategan']:
@@ -172,7 +201,14 @@ class SynthCitySyntheticGenerator:
         cpu_percent = psutil.cpu_percent(interval=1)
         
         logger.info(f"System resources: CPU {cpu_percent}%, Memory {memory.percent}%")
-        
+
+        free_gb = memory.available / 1024 ** 3
+        if free_gb < MIN_FREE_MEMORY_GB:
+            raise InsufficientResourcesError(
+                f"Not enough free memory to train '{self.algorithm}': {free_gb:.1f} GB free, "
+                f"about {MIN_FREE_MEMORY_GB:.0f} GB needed. Close other applications or use an SDV model."
+            )
+
         if memory.percent > 85:
             logger.warning(f"High memory usage ({memory.percent}%) - training may be slow")
         

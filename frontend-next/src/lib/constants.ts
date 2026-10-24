@@ -65,3 +65,14 @@ export const PRESET_CONFIGS: Record<string, { num_rows: number; epochs: number }
   Balanced: { num_rows: 1000, epochs: 300 },
   "High Fidelity": { num_rows: 10000, epochs: 500 },
 };
+
+/** AutoML (/evaluate_models) reports models by display name; mirrors backend advanced_models */
+export const SYNTHCITY_MODEL_CODES: Record<string, string> = {
+  "SynthCity - Diffusion (DDPM)": "ddpm",
+  "SynthCity - CTGAN": "ctgan",
+  "SynthCity - TVAE": "tvae",
+  "SynthCity - PrivBayes": "privbayes",
+  "SynthCity - DP-GAN": "dpgan",
+  "SynthCity - PATE-GAN": "pategan",
+  "SynthCity - AutoML (Fallback to ARF)": "arf",
+};

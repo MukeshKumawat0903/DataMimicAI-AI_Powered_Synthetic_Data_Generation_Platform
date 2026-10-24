@@ -328,7 +328,8 @@ class DistributionAnalyzer:
                 kurtosis = float(data.kurtosis())
                 
                 # Initialize distfit
-                dfit = distfit(distr=dist_list, method='rss', verbose=0)
+                # distfit >= 1.8: `method` is the fitting approach; RSS is the goodness-of-fit statistic
+                dfit = distfit(method='parametric', distr=dist_list, stats='RSS', verbose=0)
                 
                 # Fit distributions
                 dfit.fit_transform(data.values)

@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useStoreHydrated } from "@/lib/store/useStoreHydrated";
 import { useWorkspaceStore } from "@/lib/store/workspace";
 import { QualityReport } from "@/components/validation/QualityReport";
 import { VizDashboard } from "@/components/validation/VizDashboard";
@@ -9,76 +10,48 @@ import { RefinementPanel } from "@/components/validation/RefinementPanel";
 import { VersionTimeline } from "@/components/validation/VersionTimeline";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Download } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Gauge, LineChart, RefreshCw } from "lucide-react";
+import { PageHeader } from "@/components/layout/PageHeader";
 import Link from "next/link";
-import { apiClient } from "@/lib/api/client";
-import { toast } from "sonner";
-
-async function downloadFile(fileId: string) {
-  const res = await apiClient.get(`/eda/download`, {
-    params: { file_id: `syn_${fileId}` },
-    responseType: "blob",
-  });
-  const url = URL.createObjectURL(res.data as Blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `synthetic_data.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+import { DownloadFormats } from "@/components/generation/DownloadFormats";
 
 export default function ValidatePage() {
   const fileId = useWorkspaceStore((s) => s.fileId);
   const generatedFileId = useWorkspaceStore((s) => s.generatedFileId);
   const router = useRouter();
 
+  // Wait for the saved session to load before deciding there's no dataset
+  const hydrated = useStoreHydrated();
   useEffect(() => {
-    if (!fileId) {
+    if (hydrated && !fileId) {
       router.replace("/upload");
     }
-  }, [fileId, router]);
+  }, [hydrated, fileId, router]);
 
   if (!fileId) return null;
 
   return (
-    <div className="max-w-5xl mx-auto space-y-4 p-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h1 className="text-2xl font-semibold">Validate &amp; Refine</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Inspect quality scores and visualize differences between real and synthetic data.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link href="/generate">
-            <Button variant="ghost" size="sm" className="gap-1">
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </Button>
-          </Link>
-          {generatedFileId && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1"
-                onClick={() => {
-                  // P0.2: Toast on download
-                  downloadFile(fileId)
-                    .then(() => toast.success("Download started", { description: "synthetic_data.csv" }))
-                    .catch(() => toast.error("Download failed", { description: "Please try again." }));
-                }}
-              >
-                <Download className="h-3.5 w-3.5" />
-                Download CSV
+    <div className="mx-auto max-w-6xl space-y-6 px-6 py-8">
+      <PageHeader
+        icon={ShieldCheck}
+        step="Step 4 of 4"
+        title="Validate & Refine"
+        description="Inspect quality scores and visualize differences between real and synthetic data."
+        actions={
+          <>
+            <Link href="/generate">
+              <Button variant="ghost" size="sm" className="gap-1">
+                <ArrowLeft className="h-4 w-4" />
+                Back
               </Button>
-            </>
-          )}
-        </div>
-      </div>
+            </Link>
+            {generatedFileId && fileId && <DownloadFormats fileId={fileId} />}
+          </>
+        }
+      />
 
       {!generatedFileId && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+        <div className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/30 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
           No synthetic data found. Please generate data first.{" "}
           <Link href="/generate" className="underline font-medium">
             Go to Generate →
@@ -87,10 +60,19 @@ export default function ValidatePage() {
       )}
 
       <Tabs defaultValue="quality">
-        <TabsList>
-          <TabsTrigger value="quality">Quality Report</TabsTrigger>
-          <TabsTrigger value="visualize">Visualizations</TabsTrigger>
-          <TabsTrigger value="iterate">Iterate</TabsTrigger>
+        <TabsList className="h-11 p-1">
+          <TabsTrigger value="quality" className="gap-2 px-4">
+            <Gauge className="h-4 w-4 text-indigo-500" />
+            Quality Report
+          </TabsTrigger>
+          <TabsTrigger value="visualize" className="gap-2 px-4">
+            <LineChart className="h-4 w-4 text-sky-500" />
+            Visualizations
+          </TabsTrigger>
+          <TabsTrigger value="iterate" className="gap-2 px-4">
+            <RefreshCw className="h-4 w-4 text-fuchsia-500" />
+            Iterate
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="quality" className="mt-4">

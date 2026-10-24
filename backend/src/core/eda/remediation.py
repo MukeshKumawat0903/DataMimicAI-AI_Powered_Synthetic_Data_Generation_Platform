@@ -18,6 +18,18 @@ class RemediationError(Exception):
     pass
 
 
+def load_remediation_metadata_file(file_id: str, metadata_dir: Path = Path("workspace/metadata")) -> Optional[Dict[str, Any]]:
+    """
+    Load remediation metadata from JSON without instantiating the remediator.
+    Use this in API endpoints to avoid empty DataFrame errors.
+    """
+    metadata_path = metadata_dir / f"{file_id}_remediation.json"
+    if metadata_path.exists():
+        with open(metadata_path, 'r') as f:
+            return json.load(f)
+    return None
+
+
 @dataclass
 class RemediationConfig:
     """Configuration for outlier remediation."""
@@ -343,11 +355,13 @@ class OutlierRemediator:
         return self.remediation_history
 
     def save_metadata(self, file_id: str) -> str:
-        """Save remediation history to JSON metadata."""
+        """Save remediation history to JSON metadata, after the actions of earlier requests."""
+        # Each API request uses a fresh remediator, so keep what earlier requests recorded
+        previous = self.load_metadata(file_id) or {}
         metadata = {
             "file_id": file_id,
             "timestamp": datetime.now().isoformat(),
-            "remediation_history": self.remediation_history,
+            "remediation_history": previous.get("remediation_history", []) + self.remediation_history,
             "config": {
                 "winsorize_limits": self.config.winsorize_limits,
                 "cap_method": self.config.cap_method,
@@ -365,11 +379,7 @@ class OutlierRemediator:
 
     def load_metadata(self, file_id: str) -> Optional[Dict[str, Any]]:
         """Load remediation metadata from JSON."""
-        metadata_path = self.metadata_dir / f"{file_id}_remediation.json"
-        if metadata_path.exists():
-            with open(metadata_path, 'r') as f:
-                return json.load(f)
-        return None
+        return load_remediation_metadata_file(file_id, self.metadata_dir)
 
     def send_feedback(self, file_id: str, action: str, feedback: Dict[str, Any]) -> None:
         """

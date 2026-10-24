@@ -7,6 +7,9 @@ import { useNavigationGuard } from "@/hooks/useNavigationGuard";
 import { AlgorithmSelector } from "./AlgorithmSelector";
 import { ParameterForm } from "./ParameterForm";
 import { PresetManager } from "./PresetManager";
+import { AlgorithmComparison } from "./AlgorithmComparison";
+import { AutoMLPanel } from "./AutoMLPanel";
+import { DownloadFormats } from "./DownloadFormats";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -16,8 +19,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Wand2, Loader2, CheckCircle2, AlertTriangle, Circle } from "lucide-react";
+import { Wand2, Loader2, CheckCircle2, AlertTriangle, Circle, Boxes, Cpu, Bot } from "lucide-react";
+import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
+import { SDV_ALGORITHMS, SYNTHCITY_ALGORITHMS } from "@/lib/constants";
+import type { Algorithm, AppError } from "@/lib/api/types";
+
+function generationErrorMessage(err: unknown): string {
+  const appErr = err as Partial<AppError> | null;
+  if (!appErr?.status) return "Cannot reach the backend. Check that it is running.";
+  return appErr.message || "Unexpected error. Please try again.";
+}
 
 const PROGRESS_STEPS = [
   "Preparing dataset…",
@@ -35,7 +47,9 @@ export function GenerationPanel() {
   const generatedFileId = useWorkspaceStore((s) => s.generatedFileId);
   const generate = useGenerate();
 
+  const setSelectedAlgorithm = useWorkspaceStore((s) => s.setSelectedAlgorithm);
   const isSequential = selectedAlgorithm === "PARS";
+  const isSynthCity = SYNTHCITY_ALGORITHMS.includes(selectedAlgorithm);
 
   // P1.3: Block accidental navigation while generating
   useNavigationGuard(generate.isPending);
@@ -94,10 +108,8 @@ export function GenerationPanel() {
         },
       },
       {
-        onError: () => {
-          toast.error("Generation failed", {
-            description: "Check your connection or try fewer rows.",
-          });
+        onError: (err) => {
+          toast.error("Generation failed", { description: generationErrorMessage(err) });
         },
       }
     );
@@ -105,26 +117,47 @@ export function GenerationPanel() {
 
   return (
     <>
-      <Tabs defaultValue="standard">
-        <TabsList className="mb-4">
-          <TabsTrigger value="standard">Standard (SDV)</TabsTrigger>
-          <TabsTrigger value="advanced">Advanced (SynthCity)</TabsTrigger>
-          <TabsTrigger value="llm" disabled>
+      <Tabs
+        defaultValue={isSynthCity ? "advanced" : "standard"}
+        onValueChange={(tab) => {
+          // Each tab has its own algorithm family; don't carry an SDV choice into SynthCity or back
+          if (tab === "advanced" && !isSynthCity) setSelectedAlgorithm(SYNTHCITY_ALGORITHMS[0] as Algorithm);
+          if (tab === "standard" && isSynthCity) setSelectedAlgorithm(SDV_ALGORITHMS[0] as Algorithm);
+        }}
+      >
+        <TabsList className="mb-2 h-11 p-1">
+          <TabsTrigger value="standard" className="gap-2 px-4">
+            <Boxes className="h-4 w-4 text-sky-500" />
+            Standard (SDV)
+          </TabsTrigger>
+          <TabsTrigger value="advanced" className="gap-2 px-4">
+            <Cpu className="h-4 w-4 text-fuchsia-500" />
+            Advanced (SynthCity)
+          </TabsTrigger>
+          <TabsTrigger value="llm" disabled className="gap-2 px-4">
+            <Bot className="h-4 w-4" />
             LLM-Guided
-            <span className="ml-1.5 text-xs bg-muted px-1 rounded">Soon</span>
+            <span className="rounded-full bg-primary/10 px-1.5 text-[10px] font-semibold text-primary">Soon</span>
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="standard" className="space-y-4">
-          <AlgorithmSelector mode="sdv" />
-          <PresetManager />
-          <ParameterForm showSequenceParams={isSequential} />
+        <TabsContent value="standard">
+          <Card className="gap-5 px-5 py-5">
+            <AlgorithmSelector mode="sdv" />
+            <AlgorithmComparison mode="sdv" />
+            <PresetManager />
+            <ParameterForm showSequenceParams={isSequential} />
+          </Card>
         </TabsContent>
 
-        <TabsContent value="advanced" className="space-y-4">
-          <AlgorithmSelector mode="synthcity" />
-          <PresetManager />
-          <ParameterForm />
+        <TabsContent value="advanced">
+          <Card className="gap-5 px-5 py-5">
+            <AlgorithmSelector mode="synthcity" />
+            <AlgorithmComparison mode="synthcity" />
+            <PresetManager />
+            <ParameterForm />
+            <AutoMLPanel />
+          </Card>
         </TabsContent>
 
         <TabsContent value="llm">
@@ -143,20 +176,22 @@ export function GenerationPanel() {
       </div>
 
       {generatedFileId && (
-        <div className="flex items-center gap-2 text-sm text-green-600 mt-2">
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
           <CheckCircle2 className="h-4 w-4" />
           Synthetic data downloaded. You can generate again with different settings.
+          {fileId && <DownloadFormats fileId={fileId} />}
         </div>
       )}
       {generate.isError && (
-        <div className="flex items-center gap-2 text-sm text-destructive mt-2">
-          <AlertTriangle className="h-4 w-4" />
-          Generation failed. Check your connection or try fewer rows.
+        <div className="mt-4 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>Generation failed: {generationErrorMessage(generate.error)}</span>
         </div>
       )}
 
       <Button
-        className="mt-4 w-full gap-2"
+        size="lg"
+        className="mt-4 w-full gap-2 text-base"
         onClick={handleGenerate}
         disabled={generate.isPending || !fileId}
       >
@@ -171,8 +206,14 @@ export function GenerationPanel() {
       {/* P0.3: Progress overlay with simulated stepper */}
       <Dialog open={generate.isPending} onOpenChange={() => {}}>
         <DialogContent className="sm:max-w-md" showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Generating Synthetic Data</DialogTitle>
+          <DialogHeader className="flex-row items-center gap-3">
+            <span className="bg-brand-gradient flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-md shadow-indigo-500/30">
+              <Wand2 className="h-5 w-5 animate-pulse" />
+            </span>
+            <div>
+              <DialogTitle>Generating Synthetic Data</DialogTitle>
+              <p className="text-xs text-muted-foreground">Training {selectedAlgorithm} on your data</p>
+            </div>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <ol className="space-y-2" aria-label="Generation progress steps">
@@ -182,7 +223,7 @@ export function GenerationPanel() {
                 return (
                   <li key={label} className="flex items-center gap-3">
                     {done ? (
-                      <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
                     ) : active ? (
                       <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
                     ) : (

@@ -37,7 +37,7 @@ export function StepIndicator() {
   return (
     <nav
       aria-label="Wizard progress"
-      className="hidden md:flex items-center justify-center gap-0 border-b bg-background px-4 py-2 text-xs"
+      className="hidden md:flex items-center justify-center border-b bg-background/80 px-4 py-2.5 text-sm backdrop-blur supports-[backdrop-filter]:bg-background/70"
     >
       {STEPS.map((step, idx) => {
         const isActive = idx === currentIdx;
@@ -47,22 +47,22 @@ export function StepIndicator() {
         const label = (
           <span
             className={cn(
-              "flex items-center gap-1.5 font-medium",
-              isActive && "text-primary",
-              isDone && "text-green-600 dark:text-green-400",
+              "flex items-center gap-2 font-medium",
+              isActive && "text-foreground",
+              isDone && "text-emerald-600 dark:text-emerald-400",
               !isDone && !isActive && "text-muted-foreground"
             )}
           >
             {/* Step marker */}
             <span
               className={cn(
-                "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold",
-                isActive && "border-primary bg-primary text-primary-foreground",
-                isDone && "border-green-500 bg-green-500 text-white",
-                !isDone && !isActive && "border-muted-foreground/40 text-muted-foreground"
+                "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all duration-300",
+                isActive && "bg-brand-gradient text-white shadow-md shadow-indigo-500/30 ring-4 ring-primary/15",
+                isDone && "bg-emerald-500 text-white",
+                !isDone && !isActive && "border border-border bg-background text-muted-foreground"
               )}
             >
-              {isDone ? <Check className="h-3 w-3" strokeWidth={3} /> : idx + 1}
+              {isDone ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : idx + 1}
             </span>
             {step.label}
           </span>
@@ -71,14 +71,20 @@ export function StepIndicator() {
         return (
           <div key={step.href} className="flex items-center">
             {accessible && !isActive ? (
-              <Link href={step.href} className="rounded px-3 py-1 hover:bg-accent transition-colors">
+              <Link href={step.href} className="rounded-full px-2.5 py-1 transition-colors hover:bg-accent">
                 {label}
               </Link>
             ) : (
-              <span className={cn("px-3 py-1", isActive && "cursor-default")}>{label}</span>
+              <span className={cn("px-2.5 py-1", isActive && "cursor-default")}>{label}</span>
             )}
             {idx < STEPS.length - 1 && (
-              <span className="text-muted-foreground/40 select-none mx-0.5">→</span>
+              <span
+                aria-hidden
+                className={cn(
+                  "mx-1 h-0.5 w-8 rounded-full lg:w-14",
+                  idx < currentIdx ? "bg-emerald-400" : "bg-border"
+                )}
+              />
             )}
           </div>
         );

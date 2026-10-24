@@ -277,13 +277,6 @@ def _handle_generation_request(algorithm, gen_params):
                         # Parquet unavailable; show info
                         st.info("Parquet export not available (pyarrow not installed).")
 
-                    # Optional S3 upload UI
-                    if config.S3_UPLOAD_ENABLED:
-                        with st.expander("Upload to S3"):
-                            s3_key = st.text_input("S3 Key (path/filename)", value=f"synthetic_data_{st.session_state.file_id}.csv")
-                            if st.button("Upload to S3"):
-                                _upload_to_s3(csv_bytes, s3_key)
-
                 else:
                     # Enhanced error messaging
                     error_data = {}
@@ -312,35 +305,6 @@ def _handle_generation_request(algorithm, gen_params):
             except requests.exceptions.RequestException as e:
                 handle_generation_error(str(e), "api", progress.progress_bar, progress.status_text)
 
-
-
-def _upload_to_s3(data_bytes: bytes, key: str):
-    """Simple client-side request to backend S3 presign/upload endpoint.
-
-    Expects the backend to expose a /s3-upload or pre-signed URL endpoint; this
-    function will call a presumed endpoint. If your backend does not provide
-    this, adjust accordingly.
-    """
-    api_base = get_api_base()
-    try:
-        # Ask backend for pre-signed URL
-        resp = requests.post(f"{api_base}/s3/presign", json={"key": key}, timeout=30)
-        if resp.status_code != 200:
-            st.error(f"Failed to get presigned URL: {resp.text}")
-            return
-        data = resp.json()
-        presigned_url = data.get('url')
-        if not presigned_url:
-            st.error("Presigned URL not returned by backend")
-            return
-        # Upload directly to S3
-        upload_resp = requests.put(presigned_url, data=data_bytes, timeout=300)
-        if upload_resp.status_code in (200, 201):
-            st.success("Uploaded to S3 successfully")
-        else:
-            st.error(f"S3 upload failed: {upload_resp.status_code}")
-    except Exception as e:
-        st.error(f"S3 upload error: {str(e)}")
 
 
 def _get_generation_message(algorithm, gen_params):

@@ -59,7 +59,7 @@ def convert_numpy_types(obj: Any) -> Any:
 
 
 @router.post("/create-plan")
-async def create_transformation_plan(
+def create_transformation_plan(
     diagnostics: Dict[str, Any] = Body(
         ...,
         description="Diagnostics output from diagnostics_builder",

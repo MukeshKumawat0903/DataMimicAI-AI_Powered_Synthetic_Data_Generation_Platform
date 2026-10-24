@@ -28,6 +28,24 @@ def load_data(file_path: str, demo_fallback: bool = True):
             return download_demo(modality='single_table', dataset_name='fake_hotels')
         raise
 
+def backup_original(upload_dir, file_id):
+    """Keep a copy of the uploaded dataset so in-place EDA edits can be rolled back."""
+    import shutil
+    originals = Path(upload_dir) / "originals"
+    originals.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(Path(upload_dir) / f"{file_id}.csv", originals / f"{file_id}.csv")
+
+
+def restore_original(upload_dir, file_id) -> bool:
+    """Put the uploaded dataset back over the working copy. Returns False if no backup exists."""
+    import shutil
+    backup = Path(upload_dir) / "originals" / f"{file_id}.csv"
+    if not backup.exists():
+        return False
+    shutil.copyfile(backup, Path(upload_dir) / f"{file_id}.csv")
+    return True
+
+
 def process_demo_data(data, metadata, file_id, algorithm):
     """Process and store demo dataset"""
     try:
@@ -56,6 +74,8 @@ def process_demo_data(data, metadata, file_id, algorithm):
             data.to_csv(file_path, index=False)
             columns = list(data.columns)
             dataset_type = "single_table"
+
+        backup_original(upload_dir, file_id)
 
         return {
             "columns": columns,

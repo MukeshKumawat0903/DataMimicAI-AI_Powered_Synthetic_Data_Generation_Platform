@@ -9,6 +9,7 @@ import os
 import base64
 import gzip
 import io
+from typing import Optional
 
 from src.core.eda.profiling import (
     Profiler, DataCleaner, EDAConfig, ProfilingError,
@@ -281,30 +282,33 @@ async def correlation_endpoint(
 # ============================================================================
 
 @router.post("/detect-outliers")
-async def api_detect_outliers(file_id: str = Query(...)):
-    """Detect outliers in dataset."""
+def api_detect_outliers(file_id: str = Query(...)):
+    """Detect outliers in numeric columns using the IQR rule."""
     df = load_df_by_file_id(file_id)
     try:
-        detector = OutlierDetector(df)
-        results = detector.detect()
+        results = OutlierDetector(df).detect_iqr()
         return JSONResponse(results)
     except OutlierDetectionError as e:
         raise HTTPException(422, str(e))
 
 @router.post("/remove-outliers")
-async def api_remove_outliers(
+def api_remove_outliers(
     file_id: str = Query(...),
     columns: str = Query(...)
 ):
-    """Remove outliers from columns using IQR/Z-score rules."""
+    """Remove rows that are IQR outliers in any of the given columns."""
+    from src.core.eda.remediation import OutlierRemediator, RemediationError
+
     df = load_df_by_file_id(file_id)
-    cols = columns.split(",")
+    cols = [c.strip() for c in columns.split(",")]
     try:
-        detector = OutlierDetector(df)
-        df_new = detector.remove(cols)
+        outlier_indices = OutlierDetector(df).detect_iqr(cols)["outlier_indices"]
+        if not outlier_indices:
+            raise HTTPException(422, "None of the given columns is numeric.")
+        df_new = OutlierRemediator(df).remove_outliers(outlier_indices)
         df_new.to_csv(os.path.join(UPLOAD_DIR, f"{file_id}.csv"), index=False)
-        return {"status": "outliers_removed", "columns": cols}
-    except OutlierDetectionError as e:
+        return {"status": "outliers_removed", "columns": cols, "n_rows_removed": len(df) - len(df_new)}
+    except (OutlierDetectionError, RemediationError) as e:
         raise HTTPException(422, str(e))
 
 @router.post("/drop-outliers")
@@ -601,21 +605,14 @@ async def cap_outliers_endpoint(
 
 
 @router.get("/outliers/remediation-history/{file_id}")
-async def get_remediation_history(file_id: str):
+def get_remediation_history(file_id: str):
     """Retrieve remediation history for a file."""
-    try:
-        from src.core.eda.remediation import OutlierRemediator
-        
-        # Create dummy instance to load metadata
-        remediator = OutlierRemediator(pd.DataFrame())
-        metadata = remediator.load_metadata(file_id)
-        
-        if metadata:
-            return JSONResponse(metadata)
-        else:
-            raise HTTPException(404, "No remediation history found")
-    except Exception as e:
-        raise HTTPException(422, str(e))
+    from src.core.eda.remediation import load_remediation_metadata_file
+
+    metadata = load_remediation_metadata_file(file_id)
+    if not metadata:
+        raise HTTPException(404, "No remediation history found")
+    return JSONResponse(metadata)
 
 # ============================================================================
 # 5. Feature Engineering & Suggestions
@@ -1355,13 +1352,19 @@ async def rollback_transforms(
                 removed_configs.append(filename)
                 logger.info(f"Archived config: {filename}")
         
-        # Reset to original data (file already exists, no action needed)
-        # If transformations were saved to a separate file, could restore here
-        
+        # Undo in-place edits (fix-missing, drop-columns, remediation, ...) from the upload backup
+        from src.core.data_processing import restore_original
+        data_restored = restore_original(UPLOAD_DIR, file_id)
+
         return JSONResponse({
             "status": "rollback_complete",
-            "message": "All transformations rolled back. Dataset reset to original state.",
+            "message": (
+                "All transformations rolled back. Dataset reset to the original upload."
+                if data_restored else
+                "Saved transformation configs archived. No original copy of this dataset exists, so its data is unchanged."
+            ),
             "file_id": file_id,
+            "data_restored": data_restored,
             "archived_configs": removed_configs,
             "archived_count": len(removed_configs)
         })
@@ -1709,15 +1712,14 @@ async def export_pipeline(
         raise HTTPException(422, str(e))
 
 @router.post("/explain-feature")
-async def explain_feature(
+def explain_feature(
     feature_code: str = Query(...),
-    openai_key: str = Query(None),
     file_id: str = Query(None)
 ):
-    """Get a natural language explanation for a feature transformation."""
+    """Get a plain-language explanation for a feature transformation (rule-based, no LLM)."""
     try:
         suggester = FeatureSuggester(pd.DataFrame())
-        explanation = suggester.explain_feature(feature_code, openai_key)
+        explanation = suggester.explain_feature(feature_code)
         return {"explanation": explanation}
     except FeatureEngError as e:
         raise HTTPException(422, str(e))
@@ -1726,39 +1728,44 @@ async def explain_feature(
 # 6. Reporting & Download Utilities
 # ============================================================================
 
+def _outlier_and_drift_stats(file_id: str, synth_file_id: Optional[str]):
+    """IQR outlier rows, plus KS drift rows against the synthetic file when one is given."""
+    df = load_df_by_file_id(file_id)
+    out_stats = OutlierDetector(df).detect_iqr()["stats"]
+    drift_stats = []
+    if synth_file_id:
+        df_synth = load_df_by_file_id(synth_file_id)
+        ks = DriftDetector(df, df_synth).kolmogorov_smirnov_test()["results"]
+        drift_stats = [
+            {"column": r["column"], "ks_stat": r["statistic"], "p_value": r["p_value"], "drifted": r["drift_detected"]}
+            for r in ks
+        ]
+    return out_stats, drift_stats
+
 @router.post("/report-outlier-drift")
-async def report_outlier_drift(
+def report_outlier_drift(
     file_id: str = Query(...),
     synth_file_id: str = Query(None)
 ):
     """
     Generate PDF report of outlier and drift statistics.
     """
-    df = load_df_by_file_id(file_id)
-    out_stats = OutlierDetector(df).detect()["stats"]
-    drift_stats = []
-    if synth_file_id:
-        df_synth = load_df_by_file_id(synth_file_id)
-        drift_stats = DriftDetector(df, df_synth).detect()["drift_stats"]
+    out_stats, drift_stats = _outlier_and_drift_stats(file_id, synth_file_id)
     pdf_path = outlier_drift_report_pdf(out_stats, drift_stats)
     with open(pdf_path, "rb") as f:
         content = f.read()
+    os.remove(pdf_path)
     return Response(content, media_type="application/pdf")
 
 @router.post("/explain-outlier-drift")
-async def explain_outlier_drift(
+def explain_outlier_drift(
     file_id: str = Query(...),
     synth_file_id: str = Query(None)
 ):
     """
     Provide natural language explanation for outlier and drift results.
     """
-    df = load_df_by_file_id(file_id)
-    out_stats = OutlierDetector(df).detect()["stats"]
-    drift_stats = []
-    if synth_file_id:
-        df_synth = load_df_by_file_id(synth_file_id)
-        drift_stats = DriftDetector(df, df_synth).detect()["drift_stats"]
+    out_stats, drift_stats = _outlier_and_drift_stats(file_id, synth_file_id)
 
     message = "### Automated Explanation\n"
     message += f"- Outlier detection flagged {sum(row['outlier_count'] for row in out_stats)} outlier values across {len(out_stats)} columns.\n"
@@ -1772,14 +1779,23 @@ async def explain_outlier_drift(
     return {"explanation": message}
 
 @router.get("/download")
-async def download_csv(file_id: str = Query(...)):
-    """Download the current CSV file for the given file_id."""
+async def download_csv(
+    file_id: str = Query(...),
+    format: str = Query("csv", pattern="^(csv|json|parquet)$", description="csv, json (records) or parquet")
+):
+    """Download the current dataset for the given file_id as CSV, JSON or Parquet."""
     path = os.path.join(UPLOAD_DIR, f"{file_id}.csv")
     if not os.path.exists(path):
         raise HTTPException(404, "File not found")
-    with open(path, "rb") as f:
-        content = f.read()
-    return Response(content, media_type="text/csv")
+    if format == "csv":
+        with open(path, "rb") as f:
+            return Response(f.read(), media_type="text/csv")
+    df = pd.read_csv(path)
+    if format == "json":
+        return Response(df.to_json(orient="records"), media_type="application/json")
+    buffer = io.BytesIO()
+    df.to_parquet(buffer, index=False)
+    return Response(buffer.getvalue(), media_type="application/vnd.apache.parquet")
 
 
 # ============================================================================

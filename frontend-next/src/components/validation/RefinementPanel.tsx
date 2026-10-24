@@ -7,11 +7,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RefreshCw } from "lucide-react";
+import { IconTile } from "@/components/ui/icon-tile";
 
 export function RefinementPanel() {
   const fileId = useWorkspaceStore((s) => s.fileId);
   const selectedAlgorithm = useWorkspaceStore((s) => s.selectedAlgorithm);
-  const [numRows, setNumRows] = useState(1000);
+  const generatorConfig = useWorkspaceStore((s) => s.generatorConfig);
+  const [numRows, setNumRows] = useState(generatorConfig.num_rows ?? 1000);
   const generate = useGenerate();
 
   function handleRegenerate() {
@@ -20,6 +22,7 @@ export function RefinementPanel() {
       file_id: fileId,
       feedback: [],
       generator_config: {
+        ...generatorConfig,
         algorithm: selectedAlgorithm ?? "GaussianCopula",
         num_rows: numRows,
       },
@@ -28,7 +31,8 @@ export function RefinementPanel() {
 
   return (
     <Card>
-      <CardHeader className="py-3">
+      <CardHeader className="flex flex-row items-center gap-3 py-3">
+        <IconTile icon={RefreshCw} tone="pink" />
         <CardTitle className="text-base">Iterative Refinement</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
